@@ -26,6 +26,7 @@ const mapInvitation = (row: Record<string, unknown>): SurveyInvitation => ({
   startedAt: row.started_at ? String(row.started_at) : null,
   status: row.status as SurveyInvitation["status"],
   surveyId: String(row.survey_id),
+  surveyVersionId: String(row.survey_version_id),
   tokenHash: String(row.token_hash),
   updatedAt: String(row.updated_at)
 });
@@ -55,13 +56,14 @@ export class InvitationRepository implements IInvitationRepository {
     const result = await databasePool.query(
       `
         insert into survey_invitations
-          (survey_id, recipient_email_ciphertext, recipient_email_hash, token_hash, status, max_responses, expires_at, metadata, created_by)
+          (survey_id, survey_version_id, recipient_email_ciphertext, recipient_email_hash, token_hash, status, max_responses, expires_at, metadata, created_by)
         values
-          ($1, $2, $3, $4, 'pending', $5, $6, $7::jsonb, $8)
+          ($1, $2, $3, $4, $5, 'pending', $6, $7, $8::jsonb, $9)
         returning *
       `,
       [
         input.surveyId,
+        input.surveyVersionId,
         input.recipientEmailCiphertext,
         input.recipientEmailHash,
         input.tokenHash,
@@ -147,6 +149,24 @@ export class InvitationRepository implements IInvitationRepository {
         returning *
       `,
       [invitationId]
+    );
+
+    return mapInvitation(result.rows[0] as Record<string, unknown>);
+  }
+
+  public async updateInvitationStatus(
+    invitationId: string,
+    status: SurveyInvitation["status"]
+  ): Promise<SurveyInvitation> {
+    const result = await databasePool.query(
+      `
+        update survey_invitations
+        set status = $2,
+            updated_at = now()
+        where id = $1
+        returning *
+      `,
+      [invitationId, status]
     );
 
     return mapInvitation(result.rows[0] as Record<string, unknown>);

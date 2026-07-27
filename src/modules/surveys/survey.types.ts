@@ -43,6 +43,7 @@ export type Survey = {
   id: string;
   organizationId: string;
   slug: string;
+  publicSlug: string;
   status: SurveyStatus;
   accessMode: SurveyAccessMode;
   currentDraftVersionId: string | null;
@@ -139,6 +140,7 @@ export type SurveyVersionDefinition = {
 export type CreateSurveyInput = {
   organizationId: string;
   slug: string;
+  publicSlug?: string;
   title: string;
   description: string | null;
   accessMode: SurveyAccessMode;
@@ -156,7 +158,18 @@ export type CreateSurveyResult = {
 
 export type SurveySummary = Survey & {
   currentDraftVersionNumber: number | null;
+  description: string | null;
   publishedVersionNumber: number | null;
+  submittedResponseCount: number;
+  title: string | null;
+  inProgressResponseCount: number;
+};
+
+export type SurveyShareInfo = {
+  accessMode: SurveyAccessMode;
+  publicSlug: string;
+  publicUrl: string;
+  surveyId: string;
   title: string | null;
 };
 
@@ -175,6 +188,14 @@ export type UpdateSurveyMetadataInput = {
   responseLimit: number | null;
   slug: string;
   surveyId: string;
+};
+
+export type UpdateDraftVersionInput = {
+  changeSummary: string | null;
+  description: string | null;
+  settings: SurveyVersionSettings;
+  surveyVersionId: string;
+  title: string;
 };
 
 export type CreateDraftFromPublishedVersionInput = {

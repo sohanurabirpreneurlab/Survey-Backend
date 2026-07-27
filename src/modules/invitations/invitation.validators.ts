@@ -11,7 +11,8 @@ export const invitationIdRouteParams = [
 
 export const createInvitationValidators = [
   ...invitationRouteParams,
-  body("recipientEmail").isEmail().withMessage("recipientEmail must be a valid email."),
+  body("recipients").isArray({ min: 1 }).withMessage("recipients must contain at least one recipient."),
+  body("recipients.*.email").isEmail().withMessage("Each recipient email must be valid."),
   body("maxResponses").optional().isInt({ min: 1 }).withMessage("maxResponses must be at least 1."),
   body("expiresAt").optional({ nullable: true }).isISO8601().withMessage("expiresAt must be a valid timestamp.")
 ];

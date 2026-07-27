@@ -2,7 +2,7 @@ export type SurveyResponse = {
   id: string;
   surveyId: string;
   surveyVersionId: string;
-  invitationId: string;
+  invitationId: string | null;
   respondentSessionId: string;
   status: "in_progress" | "submitted" | "invalidated" | "deleted";
   revision: number;

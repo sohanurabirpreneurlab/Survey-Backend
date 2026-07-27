@@ -17,6 +17,16 @@ export const createOrganization = async (request: Request, response: Response): 
   sendCreated(response, "Organization created successfully.", organization);
 };
 
+export const listPublicOrganizations = async (_request: Request, response: Response): Promise<void> => {
+  const organizations = await organizationService.listPublicOrganizations();
+  sendSuccess(response, "Organizations retrieved successfully.", organizations);
+};
+
+export const listOrganizations = async (request: Request, response: Response): Promise<void> => {
+  const organizations = await organizationService.listOrganizationsForUser(request.admin!.userId);
+  sendSuccess(response, "Organizations retrieved successfully.", organizations);
+};
+
 export const getOrganization = async (request: Request, response: Response): Promise<void> => {
   const organization = await organizationService.getOrganization(
     getParam(request.params.organizationId),

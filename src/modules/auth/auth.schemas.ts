@@ -83,12 +83,28 @@ const fullNameRules = () =>
     .matches(/^[A-Za-z0-9.' -]+$/)
     .withMessage("fullName contains invalid characters.");
 
+const organizationIdRules = () =>
+  body("organizationId")
+    .exists()
+    .withMessage("organizationId is required.")
+    .bail()
+    .isString()
+    .withMessage("organizationId must be a string.")
+    .bail()
+    .trim()
+    .notEmpty()
+    .withMessage("organizationId is required.")
+    .bail()
+    .isUUID()
+    .withMessage("organizationId must be a valid UUID.");
+
 export const registerValidators = [
   checkExact(
     [
       emailRules(),
       passwordRules(),
-      fullNameRules()
+      fullNameRules(),
+      organizationIdRules()
     ],
     {
       message: "The registration payload contains unknown or unsupported fields."

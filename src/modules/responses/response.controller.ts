@@ -10,7 +10,8 @@ export const createOrResumeResponse = async (request: Request, response: Respons
   const result = await responseService.startOrResumeResponse({
     invitationId: request.respondent!.invitationId,
     sessionId: request.respondent!.sessionId,
-    surveyId: request.respondent!.surveyId
+    surveyId: request.respondent!.surveyId,
+    surveyVersionId: request.respondent!.surveyVersionId
   });
   sendCreated(response, "Response prepared successfully.", result);
 };

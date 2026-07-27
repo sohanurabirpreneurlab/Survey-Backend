@@ -1,3 +1,5 @@
+import { AppError } from "../../common/errors/app-error";
+import { ERROR_CODES } from "../../common/errors/error-codes";
 import { databasePool } from "../../config/database";
 import type { IResponseRepository } from "./response.repository.interface";
 import type { SurveyResponse } from "./response.types";
@@ -25,7 +27,7 @@ const withTransaction = async <T>(callback: (client: DatabaseClient) => Promise<
 const mapResponse = (row: Record<string, unknown>): SurveyResponse => ({
   createdAt: String(row.created_at),
   id: String(row.id),
-  invitationId: String(row.invitation_id),
+  invitationId: row.invitation_id ? String(row.invitation_id) : null,
   lastSavedAt: String(row.last_saved_at),
   metadata: (row.metadata as Record<string, unknown>) ?? {},
   respondentSessionId: String(row.respondent_session_id),
@@ -55,7 +57,7 @@ export class ResponseRepository implements IResponseRepository {
   }
 
   public async createResponse(input: {
-    invitationId: string;
+    invitationId: string | null;
     respondentSessionId: string;
     surveyId: string;
     surveyVersionId: string;
@@ -173,8 +175,171 @@ export class ResponseRepository implements IResponseRepository {
   }
 
   public async submitResponse(responseId: string, sessionId: string): Promise<SurveyResponse> {
-    await databasePool.query("select * from submit_survey_response($1, $2)", [responseId, sessionId]);
-    const response = await this.findResponseById(responseId);
-    return response as SurveyResponse;
+    return withTransaction(async (client) => {
+      const responseResult = await client.query(
+        `
+          select *
+          from survey_responses
+          where id = $1
+          for update
+        `,
+        [responseId]
+      );
+
+      if (!responseResult.rowCount) {
+        throw new AppError(ERROR_CODES.responseNotFound, "Response was not found.", 404);
+      }
+
+      const response = mapResponse(responseResult.rows[0] as Record<string, unknown>);
+
+      if (response.respondentSessionId !== sessionId) {
+        throw new AppError(ERROR_CODES.respondentAccessDenied, "Response does not belong to this session.", 403);
+      }
+
+      if (response.status === "submitted") {
+        return response;
+      }
+
+      const sessionResult = await client.query(
+        `
+          select *
+          from respondent_sessions
+          where id = $1
+          for update
+        `,
+        [sessionId]
+      );
+
+      if (!sessionResult.rowCount) {
+        throw new AppError(ERROR_CODES.respondentSessionInvalid, "Respondent session was not found.", 401);
+      }
+
+      const session = sessionResult.rows[0] as Record<string, unknown>;
+
+      if (String(session.status) === "revoked" || session.revoked_at) {
+        throw new AppError(ERROR_CODES.respondentSessionRevoked, "Respondent session was revoked.", 401);
+      }
+
+      if (new Date(String(session.expires_at)).getTime() <= Date.now()) {
+        throw new AppError(ERROR_CODES.respondentSessionExpired, "Respondent session expired.", 401);
+      }
+
+      let invitation: Record<string, unknown> | null = null;
+
+      if (response.invitationId) {
+        const invitationResult = await client.query(
+          `
+            select *
+            from survey_invitations
+            where id = $1
+            for update
+          `,
+          [response.invitationId]
+        );
+
+        if (!invitationResult.rowCount) {
+          throw new AppError(ERROR_CODES.invitationNotFound, "Invitation was not found.", 404);
+        }
+
+        invitation = invitationResult.rows[0] as Record<string, unknown>;
+
+        if (invitation.revoked_at) {
+          throw new AppError(ERROR_CODES.invitationRevoked, "Invitation was revoked.", 403);
+        }
+
+        if (invitation.expires_at && new Date(String(invitation.expires_at)).getTime() <= Date.now()) {
+          throw new AppError(ERROR_CODES.invitationExpired, "Invitation expired.", 403);
+        }
+
+        if (Number(invitation.response_count) >= Number(invitation.max_responses)) {
+          throw new AppError(ERROR_CODES.invitationLimitReached, "Invitation response limit reached.", 403);
+        }
+      }
+
+      const requiredQuestionsResult = await client.query(
+        `
+          select count(*)::int as total
+          from questions
+          where survey_version_id = $1
+            and required = true
+        `,
+        [response.surveyVersionId]
+      );
+
+      const answeredRequiredQuestionsResult = await client.query(
+        `
+          select count(distinct q.id)::int as total
+          from questions q
+          join answers a
+            on a.question_id = q.id
+           and a.response_id = $1
+          where q.survey_version_id = $2
+            and q.required = true
+            and (
+              a.value_text is not null
+              or a.value_number is not null
+              or a.value_boolean is not null
+              or a.value_date is not null
+              or a.value_timestamp is not null
+              or a.value_json is not null
+              or exists (select 1 from answer_choices ac where ac.answer_id = a.id)
+            )
+        `,
+        [response.id, response.surveyVersionId]
+      );
+
+      if (
+        Number((requiredQuestionsResult.rows[0] as Record<string, unknown>).total ?? 0) !==
+        Number((answeredRequiredQuestionsResult.rows[0] as Record<string, unknown>).total ?? 0)
+      ) {
+        throw new AppError(ERROR_CODES.answerRequired, "Required answers are missing.", 400);
+      }
+
+      const submittedResponseResult = await client.query(
+        `
+          update survey_responses
+          set status = 'submitted',
+              submitted_at = now(),
+              updated_at = now(),
+              last_saved_at = now()
+          where id = $1
+          returning *
+        `,
+        [response.id]
+      );
+
+      if (response.invitationId && invitation) {
+        await client.query(
+          `
+            update survey_invitations
+            set response_count = response_count + 1,
+                status = case
+                  when response_count + 1 >= max_responses then 'completed'
+                  else 'started'
+                end,
+                completed_at = case
+                  when response_count + 1 >= max_responses then now()
+                  else completed_at
+                end,
+                started_at = coalesce(started_at, now()),
+                updated_at = now()
+            where id = $1
+          `,
+          [response.invitationId]
+        );
+      }
+
+      await client.query(
+        `
+          update respondent_sessions
+          set status = 'submitted',
+              last_seen_at = now()
+          where id = $1
+        `,
+        [sessionId]
+      );
+
+      return mapResponse(submittedResponseResult.rows[0] as Record<string, unknown>);
+    });
   }
 }

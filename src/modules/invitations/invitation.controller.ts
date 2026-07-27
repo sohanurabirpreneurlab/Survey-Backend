@@ -7,15 +7,22 @@ const invitationService = new InvitationService();
 const getParam = (value: string | string[] | undefined): string => (Array.isArray(value) ? value[0] : value ?? "");
 
 export const createInvitation = async (request: Request, response: Response): Promise<void> => {
-  const invitation = await invitationService.createInvitation({
+  const result = await invitationService.createInvitationsBatch({
     createdBy: request.admin!.userId,
     expiresAt: request.body.expiresAt ?? null,
     maxResponses: request.body.maxResponses ?? 1,
-    recipientEmail: request.body.recipientEmail,
+    recipients: request.body.recipients,
     surveyId: getParam(request.params.surveyId)
   });
 
-  sendCreated(response, "Invitation created successfully.", invitation);
+  const message =
+    result.sentCount === 0
+      ? "Invitation delivery failed for all recipients."
+      : result.failedCount > 0
+        ? "Invitations sent with some delivery failures."
+        : "Invitations created successfully.";
+
+  sendCreated(response, message, result);
 };
 
 export const listInvitations = async (request: Request, response: Response): Promise<void> => {

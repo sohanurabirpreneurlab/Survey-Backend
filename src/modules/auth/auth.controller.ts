@@ -11,7 +11,8 @@ export const register = async (request: Request, response: Response): Promise<vo
   const result = await authService.register({
     email: request.body.email,
     fullName: request.body.fullName,
-    password: request.body.password
+    organizationId: request.body.organizationId,
+    password: request.body.password,
   });
 
   sendCreated(

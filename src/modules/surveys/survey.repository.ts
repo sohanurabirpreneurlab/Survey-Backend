@@ -27,6 +27,7 @@ import type {
   SurveySection,
   SurveyVersion,
   SurveyVersionDefinition,
+  UpdateDraftVersionInput,
   UpdateOptionInput,
   UpdateQuestionInput,
   UpdateSectionInput,
@@ -39,6 +40,8 @@ type DatabaseClient = {
   release: () => void;
 };
 
+const SECTION_REORDER_TEMP_OFFSET = 1000000;
+
 const mapSurvey = (row: Record<string, unknown>): Survey => ({
   accessMode: row.access_mode as Survey["accessMode"],
   closesAt: row.closes_at ? String(row.closes_at) : null,
@@ -49,6 +52,7 @@ const mapSurvey = (row: Record<string, unknown>): Survey => ({
   id: String(row.id),
   opensAt: row.opens_at ? String(row.opens_at) : null,
   organizationId: String(row.organization_id),
+  publicSlug: String(row.public_slug),
   publishedVersionId: row.published_version_id ? String(row.published_version_id) : null,
   responseLimit: row.response_limit === null ? null : Number(row.response_limit),
   slug: String(row.slug),
@@ -130,15 +134,31 @@ const withTransaction = async <T>(callback: (client: DatabaseClient) => Promise<
   }
 };
 
+const countSectionsByVersion = async (client: DatabaseClient, surveyVersionId: string): Promise<number> => {
+  const result = await client.query(
+    "select count(*)::int as total from survey_sections where survey_version_id = $1",
+    [surveyVersionId]
+  );
+
+  return Number((result.rows[0] as { total: number }).total ?? 0);
+};
+
+const clampSectionInsertPosition = (position: number, sectionCount: number) =>
+  Math.min(Math.max(position, 0), sectionCount);
+
+const clampSectionUpdatePosition = (position: number, sectionCount: number) =>
+  Math.min(Math.max(position, 0), Math.max(sectionCount - 1, 0));
+
 export class SurveyRepository implements ISurveyRepository {
   public async createSurveyWithInitialDraft(input: CreateSurveyInput): Promise<CreateSurveyResult> {
     try {
       return await withTransaction(async (client) => {
         const result = await client.query(
-          "select * from create_survey_with_initial_draft($1, $2, $3, $4, $5, $6, $7, $8, $9)",
+          "select * from create_survey_with_initial_draft($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)",
           [
             input.organizationId,
             input.slug,
+            input.publicSlug,
             input.accessMode,
             input.opensAt,
             input.closesAt,
@@ -176,6 +196,7 @@ export class SurveyRepository implements ISurveyRepository {
             id: row.survey_id,
             organization_id: input.organizationId,
             slug: input.slug,
+            public_slug: input.publicSlug,
             status: "draft",
             access_mode: input.accessMode,
             current_draft_version_id: row.draft_version_id,
@@ -211,6 +232,14 @@ export class SurveyRepository implements ISurveyRepository {
     return result.rowCount ? mapSurvey(result.rows[0] as Record<string, unknown>) : null;
   }
 
+  public async findSurveyByPublicSlug(publicSlug: string): Promise<Survey | null> {
+    const result = await databasePool.query(
+      "select * from surveys where public_slug = $1 and deleted_at is null",
+      [publicSlug]
+    );
+    return result.rowCount ? mapSurvey(result.rows[0] as Record<string, unknown>) : null;
+  }
+
   public async findSurveyBySlug(organizationId: string, slug: string): Promise<Survey | null> {
     const result = await databasePool.query(
       "select * from surveys where organization_id = $1 and slug = $2 and deleted_at is null",
@@ -232,10 +261,21 @@ export class SurveyRepository implements ISurveyRepository {
           s.*,
           dv.version_number as current_draft_version_number,
           pv.version_number as published_version_number,
-          coalesce(dv.title, pv.title) as title
+          coalesce(dv.title, pv.title) as title,
+          coalesce(dv.description, pv.description) as description,
+          coalesce(sr.submitted_count, 0) as submitted_response_count,
+          coalesce(sr.in_progress_count, 0) as in_progress_response_count
         from surveys s
         left join survey_versions dv on dv.id = s.current_draft_version_id
         left join survey_versions pv on pv.id = s.published_version_id
+        left join (
+          select
+            survey_id,
+            count(*) filter (where status = 'submitted')::int as submitted_count,
+            count(*) filter (where status = 'in_progress')::int as in_progress_count
+          from survey_responses
+          group by survey_id
+        ) sr on sr.survey_id = s.id
         ${filterSql}
         order by s.created_at desc
         limit $${limitIndex} offset $${offsetIndex}
@@ -251,7 +291,10 @@ export class SurveyRepository implements ISurveyRepository {
     const items = rowsResult.rows.map((row: Record<string, unknown>) => ({
       ...mapSurvey(row as Record<string, unknown>),
       currentDraftVersionNumber: row.current_draft_version_number === null ? null : Number(row.current_draft_version_number),
+      description: row.description ? String(row.description) : null,
+      inProgressResponseCount: Number(row.in_progress_response_count ?? 0),
       publishedVersionNumber: row.published_version_number === null ? null : Number(row.published_version_number),
+      submittedResponseCount: Number(row.submitted_response_count ?? 0),
       title: row.title ? String(row.title) : null
     }));
 
@@ -401,6 +444,31 @@ export class SurveyRepository implements ISurveyRepository {
     return mapSurvey(result.rows[0] as Record<string, unknown>);
   }
 
+  public async updateDraftVersion(input: UpdateDraftVersionInput): Promise<SurveyVersion> {
+    const result = await databasePool.query(
+      `
+        update survey_versions
+        set title = $2,
+            description = $3,
+            settings = $4::jsonb,
+            change_summary = $5,
+            updated_at = now()
+        where id = $1
+          and status = 'draft'
+        returning *
+      `,
+      [
+        input.surveyVersionId,
+        input.title,
+        input.description,
+        JSON.stringify(input.settings),
+        input.changeSummary
+      ]
+    );
+
+    return mapSurveyVersion(result.rows[0] as Record<string, unknown>);
+  }
+
   public async closeSurvey(input: UpdateSurveyLifecycleInput): Promise<Survey> {
     const result = await databasePool.query(
       "update surveys set status = 'closed', updated_at = now() where id = $1 returning *",
@@ -418,30 +486,96 @@ export class SurveyRepository implements ISurveyRepository {
   }
 
   public async createSection(input: CreateSectionInput): Promise<SurveySection> {
-    const result = await databasePool.query(
-      `
-        insert into survey_sections (survey_version_id, stable_key, title, description, position)
-        values ($1, $2, $3, $4, $5)
-        returning *
-      `,
-      [input.surveyVersionId, createStableKey("sec"), input.title, input.description, input.position]
-    );
+    return withTransaction(async (client) => {
+      const sectionCount = await countSectionsByVersion(client, input.surveyVersionId);
+      const targetPosition = clampSectionInsertPosition(input.position, sectionCount);
 
-    return mapSection(result.rows[0] as Record<string, unknown>);
+      await client.query(
+        `
+          update survey_sections
+          set position = position + 1,
+              updated_at = now()
+          where survey_version_id = $1
+            and position >= $2
+        `,
+        [input.surveyVersionId, targetPosition]
+      );
+
+      const result = await client.query(
+        `
+          insert into survey_sections (survey_version_id, stable_key, title, description, position)
+          values ($1, $2, $3, $4, $5)
+          returning *
+        `,
+        [
+          input.surveyVersionId,
+          createStableKey("sec"),
+          input.title,
+          input.description,
+          targetPosition
+        ]
+      );
+
+      return mapSection(result.rows[0] as Record<string, unknown>);
+    });
   }
 
   public async updateSection(input: UpdateSectionInput): Promise<SurveySection> {
-    const result = await databasePool.query(
-      `
-        update survey_sections
-        set title = $2, description = $3, position = $4, updated_at = now()
-        where id = $1
-        returning *
-      `,
-      [input.sectionId, input.title, input.description, input.position]
-    );
+    return withTransaction(async (client) => {
+      const existingResult = await client.query("select * from survey_sections where id = $1", [
+        input.sectionId
+      ]);
+      const existingSection = existingResult.rows[0] as Record<string, unknown> | undefined;
 
-    return mapSection(result.rows[0] as Record<string, unknown>);
+      if (!existingSection) {
+        throw new AppError(ERROR_CODES.sectionNotFound, "Section was not found.", 404);
+      }
+
+      const surveyVersionId = String(existingSection.survey_version_id);
+      const currentPosition = Number(existingSection.position);
+      const sectionCount = await countSectionsByVersion(client, surveyVersionId);
+      const targetPosition = clampSectionUpdatePosition(input.position, sectionCount);
+
+      if (targetPosition < currentPosition) {
+        await client.query(
+          `
+            update survey_sections
+            set position = position + 1,
+                updated_at = now()
+            where survey_version_id = $1
+              and id <> $2
+              and position >= $3
+              and position < $4
+          `,
+          [surveyVersionId, input.sectionId, targetPosition, currentPosition]
+        );
+      } else if (targetPosition > currentPosition) {
+        await client.query(
+          `
+            update survey_sections
+            set position = position - 1,
+                updated_at = now()
+            where survey_version_id = $1
+              and id <> $2
+              and position > $3
+              and position <= $4
+          `,
+          [surveyVersionId, input.sectionId, currentPosition, targetPosition]
+        );
+      }
+
+      const result = await client.query(
+        `
+          update survey_sections
+          set title = $2, description = $3, position = $4, updated_at = now()
+          where id = $1
+          returning *
+        `,
+        [input.sectionId, input.title, input.description, targetPosition]
+      );
+
+      return mapSection(result.rows[0] as Record<string, unknown>);
+    });
   }
 
   public async deleteSection(input: DeleteSectionInput): Promise<void> {
@@ -450,6 +584,17 @@ export class SurveyRepository implements ISurveyRepository {
 
   public async reorderSections(input: ReorderSectionsInput): Promise<SurveySection[]> {
     await withTransaction(async (client) => {
+      for (const [index, item] of input.items.entries()) {
+        await client.query(
+          `
+            update survey_sections
+            set position = $2, updated_at = now()
+            where id = $1 and survey_version_id = $3
+          `,
+          [item.sectionId, SECTION_REORDER_TEMP_OFFSET + index, input.surveyVersionId]
+        );
+      }
+
       for (const item of input.items) {
         await client.query(
           `

@@ -14,6 +14,14 @@ export class OrganizationService {
     return this.organizationRepository.createOrganizationWithOwner(input);
   }
 
+  public async listPublicOrganizations() {
+    return this.organizationRepository.listPublicOrganizations();
+  }
+
+  public async listOrganizationsForUser(userId: string) {
+    return this.organizationRepository.listMembershipsByUserId(userId);
+  }
+
   public async getOrganization(organizationId: string, userId: string): Promise<Organization> {
     const organization = await this.organizationRepository.findById(organizationId);
 

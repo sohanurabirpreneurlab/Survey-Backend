@@ -10,7 +10,7 @@ export const accessSurvey = async (request: Request, response: Response): Promis
   const result = await respondentService.grantAccessByInvitationToken(String(request.body.token));
   setRespondentSessionCookie(response, result.rawSessionToken);
   sendSuccess(response, "Respondent access granted.", {
-    publicSurveyPath: result.publicSurveyPath
+    survey: result.survey
   });
 };
 
@@ -21,6 +21,9 @@ export const logoutRespondent = async (request: Request, response: Response): Pr
 };
 
 export const getRespondentSurvey = async (request: Request, response: Response): Promise<void> => {
-  const survey = await respondentService.getPublicSurvey(request.respondent!.surveyId);
+  const survey = await respondentService.getSurveyForSession({
+    surveyId: request.respondent!.surveyId,
+    surveyVersionId: request.respondent!.surveyVersionId
+  });
   sendSuccess(response, "Survey retrieved successfully.", survey);
 };

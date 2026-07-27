@@ -61,6 +61,14 @@ export const getSurvey = async (request: Request, response: Response): Promise<v
   sendSuccess(response, "Survey retrieved successfully.", survey);
 };
 
+export const getSurveyShare = async (request: Request, response: Response): Promise<void> => {
+  const shareInfo = await surveyService.getSurveyShareInfo(
+    getParam(request.params.surveyId),
+    request.admin!.userId
+  );
+  sendSuccess(response, "Survey sharing information retrieved successfully.", shareInfo);
+};
+
 export const updateSurvey = async (request: Request, response: Response): Promise<void> => {
   const survey = await surveyService.updateSurveyMetadata(
     {
@@ -84,6 +92,25 @@ export const createDraft = async (request: Request, response: Response): Promise
     request.body.changeSummary ?? null
   );
   sendCreated(response, "Draft prepared successfully.", draft);
+};
+
+export const updateDraft = async (request: Request, response: Response): Promise<void> => {
+  const draft = await surveyService.updateDraftVersion(
+    {
+      changeSummary: request.body.changeSummary ?? null,
+      description: request.body.description ?? null,
+      settings: {
+        ...defaultSurveyVersionSettings(),
+        ...(request.body.settings ?? {})
+      },
+      surveyVersionId: "",
+      title: request.body.title
+    },
+    getParam(request.params.surveyId),
+    request.admin!.userId
+  );
+
+  sendSuccess(response, "Draft updated successfully.", draft);
 };
 
 export const discardDraft = async (request: Request, response: Response): Promise<void> => {

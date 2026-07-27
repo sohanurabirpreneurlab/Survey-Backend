@@ -20,6 +20,7 @@ import type {
   SurveySection,
   SurveyVersion,
   SurveyVersionDefinition,
+  UpdateDraftVersionInput,
   UpdateOptionInput,
   UpdateQuestionInput,
   UpdateSectionInput,
@@ -30,6 +31,7 @@ import type {
 export interface ISurveyRepository {
   createSurveyWithInitialDraft(input: CreateSurveyInput): Promise<CreateSurveyResult>;
   findSurveyById(surveyId: string): Promise<Survey | null>;
+  findSurveyByPublicSlug(publicSlug: string): Promise<Survey | null>;
   findSurveyBySlug(organizationId: string, slug: string): Promise<Survey | null>;
   listSurveys(input: ListSurveysInput): Promise<ListSurveysResult>;
   findDraftVersion(surveyId: string): Promise<SurveyVersion | null>;
@@ -41,6 +43,7 @@ export interface ISurveyRepository {
   publishDraft(input: PublishDraftInput): Promise<SurveyVersion>;
   archiveDraft(surveyId: string, versionId: string): Promise<void>;
   updateSurveyMetadata(input: UpdateSurveyMetadataInput): Promise<Survey>;
+  updateDraftVersion(input: UpdateDraftVersionInput): Promise<SurveyVersion>;
   closeSurvey(input: UpdateSurveyLifecycleInput): Promise<Survey>;
   reopenSurvey(input: UpdateSurveyLifecycleInput): Promise<Survey>;
   createSection(input: CreateSectionInput): Promise<SurveySection>;

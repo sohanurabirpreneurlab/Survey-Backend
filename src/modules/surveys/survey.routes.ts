@@ -14,11 +14,13 @@ import {
   createQuestion,
   createSection,
   createSurvey,
+  updateDraft,
   deleteOption,
   deleteQuestion,
   deleteSection,
   discardDraft,
   getSurvey,
+  getSurveyShare,
   getVersion,
   listSurveys,
   listVersions,
@@ -54,6 +56,7 @@ import {
   sectionIdParamValidator,
   surveyIdParamValidator,
   updateOptionValidators,
+  updateDraftValidators,
   updateQuestionValidators,
   updateSectionValidators,
   updateSurveyValidators,
@@ -70,9 +73,11 @@ surveyRouter.use("/:surveyId/results", resultRouter);
 surveyRouter.post("/", createSurveyValidators, validateRequest, asyncHandler(createSurvey));
 surveyRouter.get("/", listSurveysValidators, validateRequest, asyncHandler(listSurveys));
 surveyRouter.get("/:surveyId", surveyIdParamValidator, validateRequest, asyncHandler(getSurvey));
+surveyRouter.get("/:surveyId/share", surveyIdParamValidator, validateRequest, asyncHandler(getSurveyShare));
 surveyRouter.patch("/:surveyId", updateSurveyValidators, validateRequest, asyncHandler(updateSurvey));
 
 surveyRouter.post("/:surveyId/draft", createDraftValidators, validateRequest, asyncHandler(createDraft));
+surveyRouter.patch("/:surveyId/draft", updateDraftValidators, validateRequest, asyncHandler(updateDraft));
 surveyRouter.delete("/:surveyId/draft", surveyIdParamValidator, validateRequest, asyncHandler(discardDraft));
 
 surveyRouter.post("/:surveyId/publish", publishDraftValidators, validateRequest, asyncHandler(publishDraft));

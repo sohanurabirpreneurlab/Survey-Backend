@@ -22,9 +22,10 @@ declare namespace Express {
   }
 
   export interface AuthenticatedRespondent {
-    invitationId: string;
+    invitationId: string | null;
     sessionId: string;
     surveyId: string;
+    surveyVersionId: string;
   }
 
   export interface Request {
@@ -33,5 +34,6 @@ declare namespace Express {
     auth?: AuthenticatedUser;
     respondent?: AuthenticatedRespondent;
     requestId?: string;
+    safeLogPath?: string;
   }
 }

@@ -21,6 +21,18 @@ export type OrganizationMembership = {
   updatedAt: string;
 };
 
+export type OrganizationMembershipSummary = {
+  organization: Organization;
+  membership: OrganizationMembership;
+  permissions: OrganizationPermissions;
+};
+
+export type PublicOrganizationOption = {
+  id: string;
+  name: string;
+  slug: string;
+};
+
 export type CreateOrganizationInput = {
   name: string;
   slug: string;

@@ -5,10 +5,21 @@ import { hashPassword, verifyPassword } from "../../common/security/password-has
 import { createSecureToken, hashToken } from "../../common/security/token-hash";
 import { logger } from "../../common/utils/logger";
 import { env } from "../../config/env";
+import { OrganizationRepository } from "../organizations/organization.repository";
 import { v4 as uuidv4 } from "uuid";
 import { AuthRepository } from "./auth.repository";
 import type { IAuthRepository } from "./auth.repository.interface";
-import type { AccessState, AuthUserDto, LoginInput, LoginResult, RegisterInput, RegisterResult, UserProfile } from "./auth.types";
+import type {
+  AccessState,
+  AuthOrganizationDto,
+  AuthUserDto,
+  CurrentUserResult,
+  LoginInput,
+  LoginResult,
+  RegisterInput,
+  RegisterResult,
+  UserProfile
+} from "./auth.types";
 
 const normalizeEmail = (email: string): string => email.trim().toLowerCase();
 const buildRefreshExpiry = (): string =>
@@ -36,20 +47,55 @@ const toUserDto = (profile: UserProfile, email: string): AuthUserDto => ({
   role: profile.role
 });
 
+const toAuthOrganizationDto = (
+  memberships: Awaited<ReturnType<OrganizationRepository["listMembershipsByUserId"]>>
+): AuthOrganizationDto[] =>
+  memberships.map((membership) => ({
+    membershipRole: membership.membership.role,
+    organizationId: membership.organization.id,
+    organizationName: membership.organization.name,
+    organizationSlug: membership.organization.slug
+  }));
+
 export class AuthService {
   public constructor(
-    private readonly authRepository: IAuthRepository = new AuthRepository()
+    private readonly authRepository: IAuthRepository = new AuthRepository(),
+    private readonly organizationRepository = new OrganizationRepository()
   ) {}
+
+  private async buildAuthPayload(
+    profile: UserProfile,
+    email: string
+  ): Promise<Pick<RegisterResult, "isPlatformAdmin" | "organizations" | "platformRole" | "requiresApproval" | "user"> & { accessState: AccessState }> {
+    const organizations = toAuthOrganizationDto(
+      await this.organizationRepository.listMembershipsByUserId(profile.userId)
+    );
+
+    return {
+      accessState: toAccessState(profile.accountStatus),
+      isPlatformAdmin: profile.role === "admin",
+      organizations,
+      platformRole: profile.role,
+      requiresApproval: profile.accountStatus !== "approved",
+      user: toUserDto(profile, email)
+    };
+  }
 
   public async register(input: RegisterInput): Promise<RegisterResult> {
     const normalizedEmail = normalizeEmail(input.email);
     const userId = uuidv4();
+    const organization = await this.organizationRepository.findById(input.organizationId);
+
+    if (!organization) {
+      throw new AppError(ERROR_CODES.organizationNotFound, "Select a valid organization.", 404);
+    }
 
     try {
       const passwordHash = await hashPassword(input.password);
       const account = await this.authRepository.createUserAccount({
         email: normalizedEmail,
         fullName: input.fullName.trim(),
+        organizationId: input.organizationId,
         passwordHash,
         userId
       });
@@ -59,10 +105,11 @@ export class AuthService {
         userId
       });
 
+      const payload = await this.buildAuthPayload(account.profile, normalizedEmail);
+
       return {
         emailVerificationRequired: false,
-        requiresApproval: true,
-        user: toUserDto(account.profile, normalizedEmail)
+        ...payload
       };
     } catch (error) {
       if (error instanceof AppError) {
@@ -111,8 +158,6 @@ export class AuthService {
       sessionId,
       userId: account.userId
     });
-    const accessState = toAccessState(account.profile.accountStatus);
-
     logger.info(
       account.profile.accountStatus === "approved" ? "auth.approved_user_login" : "auth.pending_user_login",
       {
@@ -121,17 +166,17 @@ export class AuthService {
       }
     );
 
+    const payload = await this.buildAuthPayload(account.profile, normalizedEmail);
+
     return {
-      accessState,
       accessToken,
       expiresAt,
       refreshToken: rawRefreshToken,
-      requiresApproval: account.profile.accountStatus !== "approved",
-      user: toUserDto(account.profile, normalizedEmail)
+      ...payload
     };
   }
 
-  public async getCurrentUser(authenticatedUserId: string, email: string | null) {
+  public async getCurrentUser(authenticatedUserId: string, email: string | null): Promise<CurrentUserResult> {
     const account = await this.authRepository.findUserByUserId(authenticatedUserId);
 
     if (!account) {
@@ -142,11 +187,7 @@ export class AuthService {
       );
     }
 
-    return {
-      accessState: toAccessState(account.profile.accountStatus),
-      requiresApproval: account.profile.accountStatus !== "approved",
-      user: toUserDto(account.profile, email ?? account.email)
-    };
+    return this.buildAuthPayload(account.profile, email ?? account.email);
   }
 
   public async refresh(refreshToken: string): Promise<LoginResult> {
@@ -181,8 +222,9 @@ export class AuthService {
 
     const expiresAt = buildAccessExpiryUnix();
 
+    const payload = await this.buildAuthPayload(account.profile, account.email);
+
     return {
-      accessState: toAccessState(account.profile.accountStatus),
       accessToken: signAccessToken({
         email: account.email,
         expiresAtUnix: expiresAt,
@@ -191,8 +233,7 @@ export class AuthService {
       }),
       expiresAt,
       refreshToken: rotatedRefreshToken,
-      requiresApproval: account.profile.accountStatus !== "approved",
-      user: toUserDto(account.profile, account.email)
+      ...payload
     };
   }
 

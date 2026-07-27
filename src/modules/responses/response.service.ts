@@ -1,6 +1,5 @@
 import { AppError } from "../../common/errors/app-error";
 import { ERROR_CODES } from "../../common/errors/error-codes";
-import { InvitationRepository } from "../invitations/invitation.repository";
 import { SurveyRepository } from "../surveys/survey.repository";
 import type { ISurveyRepository } from "../surveys/survey.repository.interface";
 import { validateAnswerValue } from "./answer-validator";
@@ -16,9 +15,10 @@ export class ResponseService {
   ) {}
 
   public async startOrResumeResponse(context: {
-    invitationId: string;
+    invitationId: string | null;
     sessionId: string;
     surveyId: string;
+    surveyVersionId: string;
   }) {
     const existingResponse = await this.responseRepository.findCurrentInProgress(context.sessionId);
 
@@ -26,17 +26,11 @@ export class ResponseService {
       return existingResponse;
     }
 
-    const survey = await this.surveyRepository.findSurveyById(context.surveyId);
-
-    if (!survey || !survey.publishedVersionId) {
-      throw new AppError(ERROR_CODES.surveyNotPublished, "Survey is not available.", 404);
-    }
-
     return this.responseRepository.createResponse({
       invitationId: context.invitationId,
       respondentSessionId: context.sessionId,
       surveyId: context.surveyId,
-      surveyVersionId: survey.publishedVersionId
+      surveyVersionId: context.surveyVersionId
     });
   }
 

@@ -1,9 +1,10 @@
 export type RespondentSession = {
   id: string;
   surveyId: string;
-  invitationId: string;
+  surveyVersionId: string;
+  invitationId: string | null;
   sessionTokenHash: string;
-  status: "active" | "revoked" | "expired";
+  status: "active" | "submitted" | "revoked" | "expired";
   expiresAt: string;
   lastSeenAt: string;
   createdAt: string;
@@ -25,9 +26,7 @@ export type PublicSurveyQuestion = {
 };
 
 export type PublicSurvey = {
-  surveyId: string;
-  surveyVersionId: string;
-  slug: string;
+  publicSlug: string;
   title: string;
   description: string | null;
   settings: Record<string, unknown>;

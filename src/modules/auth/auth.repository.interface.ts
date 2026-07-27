@@ -23,6 +23,7 @@ export interface IAuthRepository {
   createUserAccount(input: {
     email: string;
     fullName: string;
+    organizationId: string;
     passwordHash: string;
     userId: string;
   }): Promise<AuthAccountRecord>;

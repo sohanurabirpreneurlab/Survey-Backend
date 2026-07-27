@@ -13,6 +13,7 @@ export type InvitationStatus =
 export type SurveyInvitation = {
   id: string;
   surveyId: string;
+  surveyVersionId: string;
   recipientEmailCiphertext: string | null;
   recipientEmailHash: string;
   tokenHash: string;
@@ -63,6 +64,7 @@ export type CreateInvitationInput = {
   recipientEmailCiphertext: string;
   recipientEmailHash: string;
   surveyId: string;
+  surveyVersionId: string;
   tokenHash: string;
 };
 
@@ -91,7 +93,7 @@ export type SendInvitationEmailInput = {
   expiresAt: string | null;
   invitationUrl: string;
   recipientEmail: string;
-  surveySlug: string;
+  surveyDescription: string | null;
   surveyTitle: string;
 };
 
@@ -99,4 +101,22 @@ export type SendInvitationEmailResult = {
   provider: string;
   providerMessageId: string | null;
   status: "sent" | "failed";
+};
+
+export type InvitationRecipientInput = {
+  email: string;
+};
+
+export type InvitationFailure = {
+  code?: string;
+  email: string;
+  message: string;
+};
+
+export type CreateInvitationsBatchResult = {
+  createdCount: number;
+  failedCount: number;
+  failedRecipients: InvitationFailure[];
+  invitations: InvitationListItem[];
+  sentCount: number;
 };

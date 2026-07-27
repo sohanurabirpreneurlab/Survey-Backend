@@ -3,7 +3,7 @@ import type { SurveyResponse } from "./response.types";
 export interface IResponseRepository {
   findCurrentInProgress(sessionId: string): Promise<SurveyResponse | null>;
   createResponse(input: {
-    invitationId: string;
+    invitationId: string | null;
     respondentSessionId: string;
     surveyId: string;
     surveyVersionId: string;

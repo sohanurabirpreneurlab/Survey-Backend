@@ -53,6 +53,13 @@ export const updateSurveyValidators = [
 ];
 
 export const createDraftValidators = [...surveyIdParamValidator];
+export const updateDraftValidators = [
+  ...surveyIdParamValidator,
+  body("title").isString().trim().notEmpty().withMessage("title is required."),
+  body("description").optional({ nullable: true }).isString().withMessage("description must be a string."),
+  body("changeSummary").optional({ nullable: true }).isString().withMessage("changeSummary must be a string."),
+  body("settings").isObject().withMessage("settings must be an object.")
+];
 export const publishDraftValidators = [...surveyIdParamValidator];
 export const closeSurveyValidators = [...surveyIdParamValidator];
 export const reopenSurveyValidators = [...surveyIdParamValidator];

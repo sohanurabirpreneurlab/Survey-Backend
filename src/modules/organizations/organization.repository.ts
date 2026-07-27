@@ -1,8 +1,15 @@
 import { AppError } from "../../common/errors/app-error";
 import { ERROR_CODES } from "../../common/errors/error-codes";
 import { databasePool } from "../../config/database";
+import { getOrganizationPermissions } from "./organization.permissions";
 import type { IOrganizationRepository } from "./organization.repository.interface";
-import type { CreateOrganizationInput, Organization, OrganizationMembership } from "./organization.types";
+import type {
+  CreateOrganizationInput,
+  Organization,
+  OrganizationMembership,
+  OrganizationMembershipSummary,
+  PublicOrganizationOption
+} from "./organization.types";
 
 type DatabaseClient = {
   query: (sql: string, values?: unknown[]) => Promise<{ rows: unknown[] }>;
@@ -45,6 +52,23 @@ const withTransaction = async <T>(callback: (client: DatabaseClient) => Promise<
 };
 
 export class OrganizationRepository implements IOrganizationRepository {
+  public async listPublicOrganizations(): Promise<PublicOrganizationOption[]> {
+    const result = await databasePool.query(
+      `
+        select id, name, slug
+        from organizations
+        where deleted_at is null
+        order by name asc
+      `
+    );
+
+    return result.rows.map((row: unknown) => ({
+      id: String((row as Record<string, unknown>).id),
+      name: String((row as Record<string, unknown>).name),
+      slug: String((row as Record<string, unknown>).slug)
+    }));
+  }
+
   public async createOrganizationWithOwner(input: CreateOrganizationInput): Promise<Organization> {
     try {
       return await withTransaction(async (client) => {
@@ -114,5 +138,50 @@ export class OrganizationRepository implements IOrganizationRepository {
     );
 
     return result.rowCount ? mapMembership(result.rows[0] as Record<string, unknown>) : null;
+  }
+
+  public async listMembershipsByUserId(userId: string): Promise<OrganizationMembershipSummary[]> {
+    const result = await databasePool.query(
+      `
+        select
+          om.id as membership_id,
+          om.organization_id,
+          om.user_id,
+          om.role,
+          om.created_at as membership_created_at,
+          om.updated_at as membership_updated_at,
+          o.id,
+          o.name,
+          o.slug,
+          o.created_by,
+          o.created_at,
+          o.updated_at,
+          o.deleted_at
+        from organization_members om
+        inner join organizations o on o.id = om.organization_id
+        where om.user_id = $1
+          and o.deleted_at is null
+        order by o.created_at asc
+      `,
+      [userId]
+    );
+
+    return result.rows.map((row: Record<string, unknown>) => {
+      const organization = mapOrganization(row as Record<string, unknown>);
+      const membership = mapMembership({
+        created_at: row.membership_created_at,
+        id: row.membership_id,
+        organization_id: row.organization_id,
+        role: row.role,
+        updated_at: row.membership_updated_at,
+        user_id: row.user_id
+      });
+
+      return {
+        membership,
+        organization,
+        permissions: getOrganizationPermissions(membership)
+      } satisfies OrganizationMembershipSummary;
+    });
   }
 }

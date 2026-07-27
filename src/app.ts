@@ -7,23 +7,47 @@ import morgan from "morgan";
 import { errorHandler } from "./common/errors/error-handler";
 import { notFound } from "./common/middleware/not-found";
 import { requestId } from "./common/middleware/request-id";
+import { adminRouter } from "./modules/admin/admin.routes";
 import { authRouter } from "./modules/auth/auth.routes";
 import { healthRouter } from "./modules/health/health.routes";
 import { organizationRouter } from "./modules/organizations/organization.routes";
 import { respondentRouter } from "./modules/respondents/respondent.routes";
+import { publicAccessRouter } from "./modules/respondents/public-access.routes";
 import { responseRouter } from "./modules/responses/response.routes";
 import { surveyRouter } from "./modules/surveys/survey.routes";
+import { env } from "./config/env";
 
 export const createApp = (): express.Express => {
   const app = express();
 
+  morgan.token("safe-url", (request) => {
+    const req = request as express.Request;
+    return req.safeLogPath ?? req.originalUrl ?? req.url;
+  });
+
   app.use(helmet());
-  app.use(cors());
+  app.use(
+    cors({
+      credentials: true,
+      origin: (origin, callback) => {
+        if (!origin || origin === env.appBaseUrl) {
+          callback(null, true);
+          return;
+        }
+
+        callback(null, false);
+      }
+    })
+  );
   app.use(requestId);
   app.use(express.json({ limit: "1mb" }));
   app.use(cookieParser());
+  app.use((request, _response, next) => {
+    request.safeLogPath = request.originalUrl.replace(/^\/i\/[^/?]+/, "/i/[redacted]");
+    next();
+  });
   app.use(
-    morgan("combined", {
+    morgan(':remote-addr - :remote-user [:date[clf]] ":method :safe-url HTTP/:http-version" :status :res[content-length] ":referrer" ":user-agent"', {
       stream: {
         write: (message: string) => {
           console.info(message.trim());
@@ -46,6 +70,8 @@ export const createApp = (): express.Express => {
   });
 
   app.use("/api/v1/health", healthRouter);
+  app.use(publicAccessRouter);
+  app.use("/api/v1/admin", adminRouter);
   app.use("/api/v1/auth", authRouter);
   app.use("/api/v1/organizations", organizationRouter);
   app.use("/api/v1/respondent", respondentRouter);

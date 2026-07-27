@@ -49,7 +49,8 @@ export const authenticateRespondent = async (
     request.respondent = {
       invitationId: session.invitationId,
       sessionId: session.id,
-      surveyId: session.surveyId
+      surveyId: session.surveyId,
+      surveyVersionId: session.surveyVersionId
     };
 
     await respondentRepository.touchSession(session.id);

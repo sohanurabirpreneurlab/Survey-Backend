@@ -15,6 +15,7 @@ export interface IInvitationRepository {
   findActiveInvitationByEmailHash(surveyId: string, recipientEmailHash: string): Promise<SurveyInvitation | null>;
   rotateInvitationToken(input: RotateInvitationTokenInput): Promise<SurveyInvitation>;
   revokeInvitation(invitationId: string): Promise<SurveyInvitation>;
+  updateInvitationStatus(invitationId: string, status: SurveyInvitation["status"]): Promise<SurveyInvitation>;
   markInvitationOpened(invitationId: string): Promise<void>;
   createEmailDelivery(input: CreateEmailDeliveryInput): Promise<EmailDelivery>;
   updateEmailDeliveryStatus(input: UpdateEmailDeliveryStatusInput): Promise<EmailDelivery>;

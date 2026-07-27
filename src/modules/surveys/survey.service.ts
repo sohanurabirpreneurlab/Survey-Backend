@@ -1,5 +1,7 @@
 import { AppError } from "../../common/errors/app-error";
 import { ERROR_CODES } from "../../common/errors/error-codes";
+import { createSecureToken, hashToken } from "../../common/security/token-hash";
+import { env } from "../../config/env";
 import { defaultSurveyVersionSettings } from "./survey.defaults";
 import { OrganizationService } from "../organizations/organization.service";
 import { compareSurveyVersions } from "./survey-version-diff.service";
@@ -19,9 +21,12 @@ import type {
   ReorderQuestionsInput,
   ReorderSectionsInput,
   Survey,
+  SurveyShareInfo,
   SurveySection,
   SurveyVersion,
+  SurveyVersionSettings,
   UpdateOptionInput,
+  UpdateDraftVersionInput,
   UpdateQuestionInput,
   UpdateSectionInput,
   UpdateSurveyMetadataInput
@@ -59,13 +64,25 @@ export class SurveyService {
       );
     }
 
-    return this.surveyRepository.createSurveyWithInitialDraft({
-      ...input,
-      settings: {
-        ...defaultSurveyVersionSettings(),
-        ...input.settings
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const publicSlug = `s_${hashToken(createSecureToken()).slice(0, 18)}`;
+      const existingPublicSlug = await this.surveyRepository.findSurveyByPublicSlug(publicSlug);
+
+      if (existingPublicSlug) {
+        continue;
       }
-    });
+
+      return this.surveyRepository.createSurveyWithInitialDraft({
+        ...input,
+        publicSlug,
+        settings: {
+          ...defaultSurveyVersionSettings(),
+          ...input.settings
+        }
+      });
+    }
+
+    throw new AppError(ERROR_CODES.databaseConflict, "Failed to allocate a public survey link.", 409);
   }
 
   public async listSurveys(userId: string, organizationId?: string, page = 1, limit = 20) {
@@ -87,6 +104,22 @@ export class SurveyService {
     return survey;
   }
 
+  public async getSurveyShareInfo(surveyId: string, userId: string): Promise<SurveyShareInfo> {
+    const survey = await this.getSurvey(surveyId, userId);
+    const preferredVersionId = survey.currentDraftVersionId ?? survey.publishedVersionId;
+    const version = preferredVersionId
+      ? await this.surveyRepository.findVersionById(survey.id, preferredVersionId)
+      : null;
+
+    return {
+      accessMode: survey.accessMode,
+      publicSlug: survey.publicSlug,
+      publicUrl: `${env.appBaseUrl}/s/${survey.publicSlug}`,
+      surveyId: survey.id,
+      title: version?.title ?? null
+    };
+  }
+
   public async updateSurveyMetadata(input: UpdateSurveyMetadataInput, userId: string): Promise<Survey> {
     const survey = await this.requireSurvey(input.surveyId);
     const membership = await this.organizationService.requireOrganizationMembership(
@@ -95,6 +128,30 @@ export class SurveyService {
     );
     this.organizationService.requireSurveyEditPermission(membership);
     return this.surveyRepository.updateSurveyMetadata(input);
+  }
+
+  public async updateDraftVersion(
+    input: UpdateDraftVersionInput,
+    surveyId: string,
+    userId: string
+  ): Promise<SurveyVersion> {
+    const context = await this.getEditableDraftContext(surveyId, userId);
+    const defaultSettings = defaultSurveyVersionSettings();
+
+    return this.surveyRepository.updateDraftVersion({
+      changeSummary: input.changeSummary,
+      description: input.description,
+      settings: {
+        ...defaultSettings,
+        ...input.settings,
+        theme: {
+          ...defaultSettings.theme,
+          ...((input.settings.theme ?? {}) as SurveyVersionSettings["theme"])
+        }
+      },
+      surveyVersionId: context.draftVersion.id,
+      title: input.title
+    });
   }
 
   public async createDraftFromPublishedVersion(
