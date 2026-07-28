@@ -79,7 +79,13 @@ export class InvitationRepository implements IInvitationRepository {
 
   public async listSurveyInvitations(surveyId: string): Promise<SurveyInvitation[]> {
     const result = await databasePool.query(
-      "select * from survey_invitations where survey_id = $1 order by created_at desc",
+      `
+        select *
+        from survey_invitations
+        where survey_id = $1
+          and status <> 'failed'
+        order by created_at desc
+      `,
       [surveyId]
     );
     return result.rows.map((row: Record<string, unknown>) => mapInvitation(row));
@@ -110,7 +116,7 @@ export class InvitationRepository implements IInvitationRepository {
           and recipient_email_hash = $2
           and revoked_at is null
           and (expires_at is null or expires_at > now())
-          and status <> 'completed'
+          and status not in ('completed', 'failed', 'revoked', 'expired')
         order by created_at desc
         limit 1
       `,

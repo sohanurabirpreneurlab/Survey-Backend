@@ -7,7 +7,7 @@ import { env } from "../../config/env";
 const buildCookieOptions = (): CookieOptions => ({
   httpOnly: true,
   path: "/",
-  sameSite: "lax",
+  sameSite: env.nodeEnv === "production" ? "none" : "lax",
   secure: env.nodeEnv === "production"
 });
 
