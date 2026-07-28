@@ -14,6 +14,7 @@ import { organizationRouter } from "./modules/organizations/organization.routes"
 import { respondentRouter } from "./modules/respondents/respondent.routes";
 import { publicAccessRouter } from "./modules/respondents/public-access.routes";
 import { responseRouter } from "./modules/responses/response.routes";
+import { surveyTrackingRouter } from "./modules/survey-tracking/survey-tracking.routes";
 import { surveyRouter } from "./modules/surveys/survey.routes";
 import { env } from "./config/env";
 
@@ -77,6 +78,7 @@ export const createApp = (): express.Express => {
   app.use("/api/v1/respondent", respondentRouter);
   app.use("/api/v1/respondent/responses", responseRouter);
   app.use("/api/v1/surveys", surveyRouter);
+  app.use("/api/v1/survey-tracking", surveyTrackingRouter);
 
   app.use(notFound);
   app.use(errorHandler);
