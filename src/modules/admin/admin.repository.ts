@@ -14,6 +14,7 @@ import type {
   AuditLogRecord,
   AuditLogsResult,
   ApproveUserResult,
+  UpdateAdminUserProfileResult,
   UpdateUserRoleResult
 } from "./admin.types";
 
@@ -838,6 +839,134 @@ export class AdminRepository {
         }
       };
     });
+  }
+
+  public async updateUserProfile(input: {
+    actorUserId: string;
+    fullName: string;
+    organizationId: string | null;
+    userId: string;
+  }): Promise<UpdateAdminUserProfileResult> {
+    const fullName = input.fullName.trim();
+
+    if (!fullName) {
+      throw new AppError(ERROR_CODES.validationError, "Enter a valid full name.", 400);
+    }
+
+    await withTransaction(async (client) => {
+      const hasProfileOrganization = await hasColumn("user_profiles", "organization");
+      const userLookup = await client.query(
+        `
+          select up.user_id, up.role
+          from user_profiles up
+          where up.user_id = $1
+          limit 1
+        `,
+        [input.userId]
+      );
+
+      if (!userLookup.rowCount) {
+        throw new AppError(ERROR_CODES.userProfileNotFound, "User was not found.", 404);
+      }
+
+      if (input.organizationId) {
+        const organizationResult = await client.query(
+          `
+            select id, name
+            from organizations
+            where id = $1
+              and deleted_at is null
+            limit 1
+          `,
+          [input.organizationId]
+        );
+
+        if (!organizationResult.rowCount) {
+          throw new AppError(ERROR_CODES.organizationNotFound, "The selected organization was not found.", 404);
+        }
+      }
+
+      if (hasProfileOrganization) {
+        await client.query(
+          `
+            update user_profiles
+            set full_name = $2,
+                organization = $3,
+                updated_at = now()
+            where user_id = $1
+          `,
+          [input.userId, fullName, input.organizationId]
+        );
+      } else {
+        await client.query(
+          `
+            update user_profiles
+            set full_name = $2,
+                updated_at = now()
+            where user_id = $1
+          `,
+          [input.userId, fullName]
+        );
+      }
+
+      const membershipResult = await client.query(
+        `
+          select id, role
+          from organization_members
+          where user_id = $1
+          order by created_at asc
+        `,
+        [input.userId]
+      );
+
+      if (input.organizationId) {
+        if (membershipResult.rowCount === 0) {
+          await client.query(
+            `
+              insert into organization_members (organization_id, user_id, role)
+              values ($1, $2, 'owner')
+            `,
+            [input.organizationId, input.userId]
+          );
+        } else {
+          const primaryMembership = membershipResult.rows[0] as Record<string, unknown>;
+
+          await client.query(
+            `
+              update organization_members
+              set organization_id = $2,
+                  updated_at = now()
+              where id = $1
+            `,
+            [String(primaryMembership.id), input.organizationId]
+          );
+        }
+      }
+
+      await this.insertAuditLog(client, {
+        action: "USER_PROFILE_UPDATED",
+        actorUserId: input.actorUserId,
+        metadata: {
+          fullName,
+          organizationId: input.organizationId
+        },
+        result: "success",
+        targetId: input.userId,
+        targetLabel: input.userId,
+        targetType: "user"
+      });
+
+    });
+
+    const updatedUser = await this.getUserById(input.userId);
+
+    if (!updatedUser) {
+      throw new AppError(ERROR_CODES.userProfileNotFound, "User was not found after update.", 404);
+    }
+
+    return {
+      user: updatedUser
+    };
   }
 
   public async createOrganization(input: {

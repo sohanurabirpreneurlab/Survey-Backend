@@ -90,6 +90,16 @@ export const updateUserRole = async (request: Request, response: Response): Prom
   sendSuccess(response, "User role updated successfully.", result);
 };
 
+export const updateUserProfile = async (request: Request, response: Response): Promise<void> => {
+  const result = await adminService.updateUserProfile({
+    actorUserId: request.admin!.userId,
+    fullName: String(request.body.fullName),
+    organizationId: request.body.organizationId ?? null,
+    userId: String(request.params.userId)
+  });
+  sendSuccess(response, "User profile updated successfully.", result);
+};
+
 export const listOrganizations = async (request: Request, response: Response): Promise<void> => {
   const result = await adminService.listOrganizations({
     limit: parsePage(request.query.limit, 20),

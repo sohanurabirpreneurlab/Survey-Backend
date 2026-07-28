@@ -16,6 +16,7 @@ import {
   rejectUser,
   suspendUser
   ,
+  updateUserProfile,
   updateUserRole
 } from "./admin.controller";
 import {
@@ -28,6 +29,7 @@ import {
   reactivateUserValidators,
   rejectUserValidators,
   suspendUserValidators,
+  updateUserProfileValidators,
   updateUserRoleValidators,
   userIdParamValidator
 } from "./admin.validators";
@@ -48,6 +50,7 @@ adminRouter.post(
   validateRequest,
   asyncHandler(reactivateUser)
 );
+adminRouter.patch("/users/:userId/profile", updateUserProfileValidators, validateRequest, asyncHandler(updateUserProfile));
 adminRouter.patch("/users/:userId/role", updateUserRoleValidators, validateRequest, asyncHandler(updateUserRole));
 adminRouter.post("/organizations", createOrganizationValidators, validateRequest, asyncHandler(createOrganization));
 adminRouter.get(

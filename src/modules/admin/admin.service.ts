@@ -69,6 +69,15 @@ export class AdminService {
     return this.adminRepository.updateUserRole(input);
   }
 
+  public async updateUserProfile(input: {
+    actorUserId: string;
+    fullName: string;
+    organizationId: string | null;
+    userId: string;
+  }) {
+    return this.adminRepository.updateUserProfile(input);
+  }
+
   public async listOrganizations(input: { limit: number; page: number; query?: string }) {
     return this.adminRepository.listOrganizations(input);
   }

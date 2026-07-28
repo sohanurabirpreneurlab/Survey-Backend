@@ -135,6 +135,10 @@ export type UpdateUserRoleResult = {
   };
 };
 
+export type UpdateAdminUserProfileResult = {
+  user: AdminUserDetail;
+};
+
 export type CreateAdminOrganizationResult = {
   organization: {
     id: string;

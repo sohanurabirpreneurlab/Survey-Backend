@@ -45,6 +45,21 @@ export const updateUserRoleValidators = [
     .withMessage("platformRole is invalid.")
 ];
 
+export const updateUserProfileValidators = [
+  ...userIdParamValidator,
+  body("fullName")
+    .isString()
+    .trim()
+    .notEmpty()
+    .withMessage("fullName is required.")
+    .isLength({ min: 2, max: 120 })
+    .withMessage("fullName must be between 2 and 120 characters."),
+  body("organizationId")
+    .optional({ nullable: true })
+    .custom((value) => value === null || value === "" || (typeof value === "string" && /^[0-9a-fA-F-]{36}$/.test(value)))
+    .withMessage("organizationId must be a valid UUID.")
+];
+
 export const listOrganizationsValidators = [
   query("q").optional().isString().withMessage("q must be a string."),
   query("page").optional().isInt({ min: 1 }).withMessage("page must be 1 or greater."),
