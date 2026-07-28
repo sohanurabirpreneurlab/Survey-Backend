@@ -2,6 +2,8 @@ import { AppError } from "../../common/errors/app-error";
 import { ERROR_CODES } from "../../common/errors/error-codes";
 import { createSecureToken, hashToken } from "../../common/security/token-hash";
 import { env } from "../../config/env";
+import { AuthRepository } from "../auth/auth.repository";
+import { OrganizationRepository } from "../organizations/organization.repository";
 import { defaultSurveyVersionSettings } from "./survey.defaults";
 import { OrganizationService } from "../organizations/organization.service";
 import { compareSurveyVersions } from "./survey-version-diff.service";
@@ -21,7 +23,10 @@ import type {
   ReorderQuestionsInput,
   ReorderSectionsInput,
   Survey,
+  SurveyAccessInfo,
   SurveyShareInfo,
+  SurveySummaryWithAccess,
+  SurveyWithAccess,
   SurveySection,
   SurveyVersion,
   SurveyVersionSettings,
@@ -31,11 +36,17 @@ import type {
   UpdateSectionInput,
   UpdateSurveyMetadataInput
 } from "./survey.types";
+import type { OrganizationMembershipSummary } from "../organizations/organization.types";
 
 type EditableDraftContext = {
   draftVersion: SurveyVersion;
-  membership: Awaited<ReturnType<OrganizationService["requireOrganizationMembership"]>>;
   survey: Survey;
+  actorContext: SurveyActorContext;
+};
+
+type SurveyActorContext = {
+  isPlatformAdmin: boolean;
+  membershipsByOrganizationId: Map<string, OrganizationMembershipSummary>;
 };
 
 const questionSupportsOptions = (questionType: Question["type"]): boolean =>
@@ -44,7 +55,9 @@ const questionSupportsOptions = (questionType: Question["type"]): boolean =>
 export class SurveyService {
   public constructor(
     private readonly surveyRepository: ISurveyRepository = new SurveyRepository(),
-    private readonly organizationService = new OrganizationService()
+    private readonly organizationService = new OrganizationService(),
+    private readonly organizationRepository = new OrganizationRepository(),
+    private readonly authRepository = new AuthRepository()
   ) {}
 
   public async createSurvey(input: CreateSurveyInput) {
@@ -85,23 +98,33 @@ export class SurveyService {
     throw new AppError(ERROR_CODES.databaseConflict, "Failed to allocate a public survey link.", 409);
   }
 
-  public async listSurveys(userId: string, organizationId?: string, page = 1, limit = 20) {
-    if (organizationId) {
-      const membership = await this.organizationService.requireOrganizationMembership(organizationId, userId);
-      this.organizationService.requireSurveyReadPermission(membership);
-    }
+  public async listSurveys(
+    userId: string,
+    organizationId?: string,
+    page = 1,
+    limit = 20
+  ): Promise<{ items: SurveySummaryWithAccess[]; limit: number; page: number; total: number; totalPages: number }> {
+    const [actorContext, result] = await Promise.all([
+      this.getActorContext(userId),
+      this.surveyRepository.listSurveys({ limit, organizationId, page })
+    ]);
 
-    return this.surveyRepository.listSurveys({ limit, organizationId, page });
+    return {
+      ...result,
+      items: result.items.map((survey) => ({
+        ...survey,
+        access: this.buildSurveyAccess(survey, actorContext)
+      }))
+    };
   }
 
-  public async getSurvey(surveyId: string, userId: string): Promise<Survey> {
+  public async getSurvey(surveyId: string, userId: string): Promise<SurveyWithAccess> {
     const survey = await this.requireSurvey(surveyId);
-    const membership = await this.organizationService.requireOrganizationMembership(
-      survey.organizationId,
-      userId
-    );
-    this.organizationService.requireSurveyReadPermission(membership);
-    return survey;
+    const actorContext = await this.getActorContext(userId);
+    return {
+      ...survey,
+      access: this.assertReadableSurveyAccess(survey, actorContext)
+    };
   }
 
   public async getSurveyShareInfo(surveyId: string, userId: string): Promise<SurveyShareInfo> {
@@ -121,12 +144,7 @@ export class SurveyService {
   }
 
   public async updateSurveyMetadata(input: UpdateSurveyMetadataInput, userId: string): Promise<Survey> {
-    const survey = await this.requireSurvey(input.surveyId);
-    const membership = await this.organizationService.requireOrganizationMembership(
-      survey.organizationId,
-      userId
-    );
-    this.organizationService.requireSurveyEditPermission(membership);
+    await this.assertEditableSurveyAccess(input.surveyId, userId);
     return this.surveyRepository.updateSurveyMetadata(input);
   }
 
@@ -159,12 +177,7 @@ export class SurveyService {
     userId: string,
     changeSummary: string | null
   ): Promise<SurveyVersion> {
-    const survey = await this.requireSurvey(surveyId);
-    const membership = await this.organizationService.requireOrganizationMembership(
-      survey.organizationId,
-      userId
-    );
-    this.organizationService.requireSurveyEditPermission(membership);
+    const survey = await this.assertEditableSurveyAccess(surveyId, userId);
 
     if (survey.currentDraftVersionId) {
       const existingDraft = await this.surveyRepository.findDraftVersion(survey.id);
@@ -198,7 +211,18 @@ export class SurveyService {
 
   public async publishDraft(surveyId: string, userId: string): Promise<SurveyVersion> {
     const context = await this.getEditableDraftContext(surveyId, userId);
-    this.organizationService.requireSurveyPublishPermission(context.membership);
+
+    if (!context.actorContext.isPlatformAdmin) {
+      const membership = context.actorContext.membershipsByOrganizationId.get(context.survey.organizationId);
+
+      if (!membership?.permissions.canPublishSurvey) {
+        throw new AppError(
+          ERROR_CODES.insufficientOrganizationRole,
+          "Your role does not allow survey publishing.",
+          403
+        );
+      }
+    }
 
     const definition = await this.surveyRepository.getVersionDefinition(context.draftVersion.id);
 
@@ -225,12 +249,7 @@ export class SurveyService {
   }
 
   public async closeSurvey(surveyId: string, userId: string): Promise<Survey> {
-    const survey = await this.requireSurvey(surveyId);
-    const membership = await this.organizationService.requireOrganizationMembership(
-      survey.organizationId,
-      userId
-    );
-    this.organizationService.requireSurveyLifecyclePermission(membership);
+    const survey = await this.assertLifecycleSurveyAccess(surveyId, userId);
 
     if (survey.status === "closed") {
       throw new AppError(ERROR_CODES.surveyAlreadyClosed, "The survey is already closed.", 400);
@@ -240,12 +259,7 @@ export class SurveyService {
   }
 
   public async reopenSurvey(surveyId: string, userId: string): Promise<Survey> {
-    const survey = await this.requireSurvey(surveyId);
-    const membership = await this.organizationService.requireOrganizationMembership(
-      survey.organizationId,
-      userId
-    );
-    this.organizationService.requireSurveyLifecyclePermission(membership);
+    const survey = await this.assertLifecycleSurveyAccess(surveyId, userId);
 
     if (!survey.publishedVersionId) {
       throw new AppError(ERROR_CODES.surveyNotPublished, "Only published surveys can be reopened.", 400);
@@ -520,12 +534,8 @@ export class SurveyService {
   }
 
   private async getEditableDraftContext(surveyId: string, userId: string): Promise<EditableDraftContext> {
-    const survey = await this.requireSurvey(surveyId);
-    const membership = await this.organizationService.requireOrganizationMembership(
-      survey.organizationId,
-      userId
-    );
-    this.organizationService.requireSurveyEditPermission(membership);
+    const survey = await this.assertEditableSurveyAccess(surveyId, userId);
+    const actorContext = await this.getActorContext(userId);
 
     if (!survey.currentDraftVersionId) {
       throw new AppError(ERROR_CODES.draftNotFound, "This survey does not have an active draft.", 404);
@@ -541,10 +551,121 @@ export class SurveyService {
     // the draft. That separation is why all mutations are forced through the
     // current draft pointer rather than any arbitrary version ID.
     return {
+      actorContext,
       draftVersion,
-      membership,
       survey
     };
+  }
+
+  private async getActorContext(userId: string): Promise<SurveyActorContext> {
+    const [account, memberships] = await Promise.all([
+      this.authRepository.findUserByUserId(userId),
+      this.organizationRepository.listMembershipsByUserId(userId)
+    ]);
+
+    if (!account) {
+      throw new AppError(ERROR_CODES.userProfileNotFound, "Account profile is missing.", 403);
+    }
+
+    return {
+      isPlatformAdmin: account.profile.role === "admin",
+      membershipsByOrganizationId: new Map(
+        memberships.map((membership) => [membership.organization.id, membership] as const)
+      )
+    };
+  }
+
+  private buildSurveyAccess(survey: Survey, actorContext: SurveyActorContext): SurveyAccessInfo {
+    if (actorContext.isPlatformAdmin) {
+      return {
+        canEdit: true,
+        canRead: true,
+        isCrossOrganizationPreview: false,
+        message: null,
+        reason: "admin"
+      };
+    }
+
+    const membership = actorContext.membershipsByOrganizationId.get(survey.organizationId);
+
+    if (membership) {
+      if (membership.permissions.canEditDraft) {
+        return {
+          canEdit: true,
+          canRead: true,
+          isCrossOrganizationPreview: false,
+          message: null,
+          reason: "organization_edit"
+        };
+      }
+
+      return {
+        canEdit: false,
+        canRead: membership.permissions.canReadSurvey,
+        isCrossOrganizationPreview: false,
+        message: membership.permissions.canReadSurvey
+          ? "Your organization role allows previewing this survey, but not editing its draft."
+          : "Your organization role does not allow opening this survey.",
+        reason: "organization_read_only"
+      };
+    }
+
+    return {
+      canEdit: false,
+      canRead: true,
+      isCrossOrganizationPreview: true,
+      message:
+        "You belong to a different organization. You can preview this survey, but only admins or members of the owning organization can edit it.",
+      reason: "cross_organization_preview"
+    };
+  }
+
+  private assertReadableSurveyAccess(survey: Survey, actorContext: SurveyActorContext): SurveyAccessInfo {
+    const access = this.buildSurveyAccess(survey, actorContext);
+
+    if (!access.canRead) {
+      throw new AppError(ERROR_CODES.forbidden, access.message ?? "You are not allowed to access this survey.", 403);
+    }
+
+    return access;
+  }
+
+  private async assertEditableSurveyAccess(surveyId: string, userId: string): Promise<Survey> {
+    const survey = await this.requireSurvey(surveyId);
+    const actorContext = await this.getActorContext(userId);
+    const access = this.assertReadableSurveyAccess(survey, actorContext);
+
+    if (!access.canEdit) {
+      throw new AppError(
+        ERROR_CODES.surveyNotEditable,
+        access.message ?? "This survey is available in preview only.",
+        403
+      );
+    }
+
+    return survey;
+  }
+
+  private async assertLifecycleSurveyAccess(surveyId: string, userId: string): Promise<Survey> {
+    const survey = await this.requireSurvey(surveyId);
+    const actorContext = await this.getActorContext(userId);
+    const access = this.assertReadableSurveyAccess(survey, actorContext);
+
+    if (actorContext.isPlatformAdmin) {
+      return survey;
+    }
+
+    const membership = actorContext.membershipsByOrganizationId.get(survey.organizationId);
+
+    if (!access.canEdit || !membership?.permissions.canCloseSurvey) {
+      throw new AppError(
+        ERROR_CODES.insufficientOrganizationRole,
+        access.message ?? "Your role does not allow survey lifecycle changes.",
+        403
+      );
+    }
+
+    return survey;
   }
 
   private validateQuestionOptions(

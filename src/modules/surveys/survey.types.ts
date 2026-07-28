@@ -57,6 +57,18 @@ export type Survey = {
   deletedAt: string | null;
 };
 
+export type SurveyAccessInfo = {
+  canEdit: boolean;
+  canRead: boolean;
+  isCrossOrganizationPreview: boolean;
+  message: string | null;
+  reason: "admin" | "organization_edit" | "organization_read_only" | "cross_organization_preview";
+};
+
+export type SurveyWithAccess = Survey & {
+  access: SurveyAccessInfo;
+};
+
 export type SurveyVersion = {
   id: string;
   surveyId: string;
@@ -163,6 +175,10 @@ export type SurveySummary = Survey & {
   submittedResponseCount: number;
   title: string | null;
   inProgressResponseCount: number;
+};
+
+export type SurveySummaryWithAccess = SurveySummary & {
+  access: SurveyAccessInfo;
 };
 
 export type SurveyShareInfo = {
