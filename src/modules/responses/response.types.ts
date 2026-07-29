@@ -16,6 +16,7 @@ export type SurveyResponse = {
 
 export type AnswerRecord = {
   id: string;
+  scoreSnapshot: number | null;
   responseId: string;
   questionId: string;
   questionStableKey: string;
@@ -28,6 +29,13 @@ export type AnswerRecord = {
   createdAt: string;
   updatedAt: string;
   optionIds: string[];
+};
+
+export type ResponseScoreRecord = {
+  calculatedScoreId: string;
+  responseId: string;
+  scoreValue: number | null;
+  thresholdMatched: boolean | null;
 };
 
 export type SaveAnswerInput = {

@@ -1,4 +1,5 @@
 import type {
+  SurveyTrackingResponseAnswer,
   SurveyTrackingInvitationRecipient,
   SurveyTrackingResponseItem,
   SurveyTrackingResponsePreview,
@@ -18,6 +19,7 @@ export interface ISurveyTrackingRepository {
     | null
   >;
   listInvitationRecipients(surveyId: string): Promise<SurveyTrackingInvitationRecipient[]>;
+  listSurveyResponseAnswers(surveyId: string): Promise<Array<SurveyTrackingResponseAnswer & { responseId: string }>>;
   listSurveyResponses(surveyId: string): Promise<SurveyTrackingResponseItem[]>;
   listTrackedSurveys(input: {
     limit: number;

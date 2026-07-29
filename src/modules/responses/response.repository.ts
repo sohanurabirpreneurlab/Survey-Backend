@@ -2,7 +2,7 @@ import { AppError } from "../../common/errors/app-error";
 import { ERROR_CODES } from "../../common/errors/error-codes";
 import { databasePool } from "../../config/database";
 import type { IResponseRepository } from "./response.repository.interface";
-import type { SurveyResponse } from "./response.types";
+import type { AnswerRecord, ResponseScoreRecord, SurveyResponse } from "./response.types";
 
 type DatabaseClient = {
   query: (sql: string, values?: unknown[]) => Promise<{ rowCount?: number; rows: unknown[] }>;
@@ -41,6 +41,43 @@ const mapResponse = (row: Record<string, unknown>): SurveyResponse => ({
 });
 
 export class ResponseRepository implements IResponseRepository {
+  public async listAnswersForResponse(responseId: string): Promise<AnswerRecord[]> {
+    const result = await databasePool.query(
+      `
+        select
+          a.*,
+          coalesce(array_agg(ac.option_id order by ac.option_id) filter (where ac.option_id is not null), '{}'::uuid[]) as option_ids
+        from answers a
+        left join answer_choices ac on ac.answer_id = a.id
+        where a.response_id = $1
+        group by a.id
+        order by a.created_at asc
+      `,
+      [responseId]
+    );
+
+    return result.rows.map((row: unknown) => {
+      const value = row as Record<string, unknown>;
+
+      return {
+        createdAt: String(value.created_at),
+        id: String(value.id),
+        optionIds: Array.isArray(value.option_ids) ? value.option_ids.map((item) => String(item)) : [],
+        questionId: String(value.question_id),
+        questionStableKey: String(value.question_stable_key),
+        responseId: String(value.response_id),
+        scoreSnapshot: value.score_snapshot === null || value.score_snapshot === undefined ? null : Number(value.score_snapshot),
+        updatedAt: String(value.updated_at),
+        valueBoolean: value.value_boolean === null ? null : Boolean(value.value_boolean),
+        valueDate: value.value_date ? String(value.value_date) : null,
+        valueJson: value.value_json ?? null,
+        valueNumber: value.value_number === null || value.value_number === undefined ? null : Number(value.value_number),
+        valueText: value.value_text ? String(value.value_text) : null,
+        valueTimestamp: value.value_timestamp ? String(value.value_timestamp) : null
+      };
+    });
+  }
+
   public async findCurrentInProgress(sessionId: string): Promise<SurveyResponse | null> {
     const result = await databasePool.query(
       `
@@ -84,6 +121,7 @@ export class ResponseRepository implements IResponseRepository {
     questionId: string;
     questionStableKey: string;
     responseId: string;
+    scoreSnapshot: number | null;
     valueBoolean: boolean | null;
     valueJson: unknown;
     valueNumber: number | null;
@@ -121,9 +159,10 @@ export class ResponseRepository implements IResponseRepository {
             value_number,
             value_boolean,
             value_timestamp,
-            value_json
+            value_json,
+            score_snapshot
           )
-          values ($1, $2, $3, $4, $5, $6, $7, $8::jsonb)
+          values ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9)
           on conflict (response_id, question_id)
           do update
             set question_stable_key = excluded.question_stable_key,
@@ -132,6 +171,7 @@ export class ResponseRepository implements IResponseRepository {
                 value_boolean = excluded.value_boolean,
                 value_timestamp = excluded.value_timestamp,
                 value_json = excluded.value_json,
+                score_snapshot = excluded.score_snapshot,
                 updated_at = now()
           returning *
         `,
@@ -143,7 +183,8 @@ export class ResponseRepository implements IResponseRepository {
           input.valueNumber,
           input.valueBoolean,
           input.valueTimestamp,
-          JSON.stringify(input.valueJson)
+          JSON.stringify(input.valueJson),
+          input.scoreSnapshot
         ]
       );
 
@@ -174,7 +215,15 @@ export class ResponseRepository implements IResponseRepository {
     });
   }
 
-  public async submitResponse(responseId: string, sessionId: string): Promise<SurveyResponse> {
+  public async submitResponse(
+    responseId: string,
+    sessionId: string,
+    input?: {
+      hiddenQuestionIds?: string[];
+      responseScores?: ResponseScoreRecord[];
+      visibleRequiredQuestionIds?: string[];
+    }
+  ): Promise<SurveyResponse> {
     return withTransaction(async (client) => {
       const responseResult = await client.query(
         `
@@ -256,15 +305,19 @@ export class ResponseRepository implements IResponseRepository {
         }
       }
 
-      const requiredQuestionsResult = await client.query(
-        `
-          select count(*)::int as total
-          from questions
-          where survey_version_id = $1
-            and required = true
-        `,
-        [response.surveyVersionId]
-      );
+      if ((input?.hiddenQuestionIds ?? []).length > 0) {
+        await client.query(
+          `
+            delete from answers
+            where response_id = $1
+              and question_id = any($2::uuid[])
+          `,
+          [response.id, input?.hiddenQuestionIds ?? []]
+        );
+      }
+
+      const visibleRequiredQuestionIds = input?.visibleRequiredQuestionIds ?? [];
+      const requiredQuestionsTotal = visibleRequiredQuestionIds.length;
 
       const answeredRequiredQuestionsResult = await client.query(
         `
@@ -273,8 +326,7 @@ export class ResponseRepository implements IResponseRepository {
           join answers a
             on a.question_id = q.id
            and a.response_id = $1
-          where q.survey_version_id = $2
-            and q.required = true
+          where q.id = any($2::uuid[])
             and (
               a.value_text is not null
               or a.value_number is not null
@@ -285,14 +337,34 @@ export class ResponseRepository implements IResponseRepository {
               or exists (select 1 from answer_choices ac where ac.answer_id = a.id)
             )
         `,
-        [response.id, response.surveyVersionId]
+        [response.id, visibleRequiredQuestionIds]
       );
 
       if (
-        Number((requiredQuestionsResult.rows[0] as Record<string, unknown>).total ?? 0) !==
+        requiredQuestionsTotal !==
         Number((answeredRequiredQuestionsResult.rows[0] as Record<string, unknown>).total ?? 0)
       ) {
         throw new AppError(ERROR_CODES.answerRequired, "Required answers are missing.", 400);
+      }
+
+      for (const responseScore of input?.responseScores ?? []) {
+        await client.query(
+          `
+            insert into survey_response_scores (response_id, calculated_score_id, score_value, threshold_matched)
+            values ($1, $2, $3, $4)
+            on conflict (response_id, calculated_score_id)
+            do update
+              set score_value = excluded.score_value,
+                  threshold_matched = excluded.threshold_matched,
+                  updated_at = now()
+          `,
+          [
+            responseScore.responseId,
+            responseScore.calculatedScoreId,
+            responseScore.scoreValue,
+            responseScore.thresholdMatched
+          ]
+        );
       }
 
       const submittedResponseResult = await client.query(

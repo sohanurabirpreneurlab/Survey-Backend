@@ -22,6 +22,10 @@ export const optionIdParamValidator = [
   param("optionId").isUUID().withMessage("optionId must be a valid UUID.")
 ];
 
+export const calculatedScoreIdParamValidator = [
+  param("calculatedScoreId").isUUID().withMessage("calculatedScoreId must be a valid UUID.")
+];
+
 export const createSurveyValidators = [
   body("organizationId").isUUID().withMessage("organizationId must be a valid UUID."),
   body("slug").isString().trim().notEmpty().withMessage("slug is required."),
@@ -146,6 +150,14 @@ export const updateOptionValidators = [
   body("position").isInt({ min: 0 }).withMessage("position must be zero or greater.")
 ];
 
+export const bulkUpdateOptionScoresValidators = [
+  ...surveyIdParamValidator,
+  ...questionIdParamValidator,
+  body("options").isArray({ min: 1 }).withMessage("options must be a non-empty array."),
+  body("options.*.optionId").isUUID().withMessage("optionId must be a valid UUID."),
+  body("options.*.scoreValue").optional({ nullable: true }).isNumeric().withMessage("scoreValue must be numeric or null.")
+];
+
 export const deleteOptionValidators = [...surveyIdParamValidator, ...questionIdParamValidator, ...optionIdParamValidator];
 
 export const reorderOptionsValidators = [
@@ -155,3 +167,28 @@ export const reorderOptionsValidators = [
   body("items.*.optionId").isUUID().withMessage("optionId must be a valid UUID."),
   body("items.*.position").isInt({ min: 0 }).withMessage("position must be zero or greater.")
 ];
+
+export const createCalculatedScoreValidators = [
+  ...surveyIdParamValidator,
+  body("name").isString().trim().notEmpty().withMessage("name is required."),
+  body("key").isString().trim().notEmpty().withMessage("key is required."),
+  body("calculationType").isIn(["average"]).withMessage("calculationType is invalid."),
+  body("thresholdOperator")
+    .isIn(["less_than", "less_than_or_equal", "equal", "greater_than_or_equal", "greater_than"])
+    .withMessage("thresholdOperator is invalid."),
+  body("thresholdValue").isNumeric().withMessage("thresholdValue must be numeric."),
+  body("requireAllAnswers").isBoolean().withMessage("requireAllAnswers must be a boolean."),
+  body("decimalPlaces").isInt({ min: 0, max: 6 }).withMessage("decimalPlaces must be between 0 and 6."),
+  body("sourceQuestionIds").isArray({ min: 1 }).withMessage("sourceQuestionIds must be a non-empty array."),
+  body("sourceQuestionIds.*").isUUID().withMessage("sourceQuestionIds must contain valid UUIDs."),
+  body("targets").optional().isArray().withMessage("targets must be an array."),
+  body("targets.*.targetType").optional().isIn(["question", "section"]).withMessage("targetType is invalid."),
+  body("targets.*.targetId").optional().isUUID().withMessage("targetId must be a valid UUID.")
+];
+
+export const updateCalculatedScoreValidators = [
+  ...createCalculatedScoreValidators,
+  ...calculatedScoreIdParamValidator
+];
+
+export const deleteCalculatedScoreValidators = [...surveyIdParamValidator, ...calculatedScoreIdParamValidator];

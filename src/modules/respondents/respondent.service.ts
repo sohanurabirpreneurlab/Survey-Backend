@@ -130,12 +130,34 @@ export class RespondentService {
     }
 
     return {
+      calculatedScores: definition.calculatedScores.map((score) => ({
+        calculationType: score.calculationType,
+        decimalPlaces: score.decimalPlaces,
+        id: score.id,
+        key: score.key,
+        name: score.name,
+        questions: score.questions.map((question) => ({
+          id: question.id,
+          position: question.position,
+          questionId: question.questionId,
+          weight: question.weight
+        })),
+        requireAllAnswers: score.requireAllAnswers,
+        targets: score.targets.map((target) => ({
+          id: target.id,
+          targetId: target.targetId,
+          targetType: target.targetType
+        })),
+        thresholdOperator: score.thresholdOperator,
+        thresholdValue: score.thresholdValue
+      })),
       description: definition.version.description,
       options: definition.options.map((option) => ({
         id: option.id,
         label: option.label,
         position: option.position,
         questionId: option.questionId,
+        scoreValue: option.scoreValue,
         settings: option.settings,
         stableKey: option.stableKey,
         value: option.value

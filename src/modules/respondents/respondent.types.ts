@@ -26,6 +26,27 @@ export type PublicSurveyQuestion = {
 };
 
 export type PublicSurvey = {
+  calculatedScores: Array<{
+    calculationType: string;
+    decimalPlaces: number;
+    id: string;
+    key: string;
+    name: string;
+    questions: Array<{
+      id: string;
+      position: number;
+      questionId: string;
+      weight: number;
+    }>;
+    requireAllAnswers: boolean;
+    targets: Array<{
+      id: string;
+      targetId: string;
+      targetType: "question" | "section";
+    }>;
+    thresholdOperator: string;
+    thresholdValue: number;
+  }>;
   publicSlug: string;
   title: string;
   description: string | null;
@@ -41,6 +62,7 @@ export type PublicSurvey = {
   options: Array<{
     id: string;
     questionId: string;
+    scoreValue: number | null;
     stableKey: string;
     label: string;
     value: string;

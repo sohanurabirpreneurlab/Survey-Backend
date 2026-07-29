@@ -6,6 +6,8 @@ import { databasePool } from "../../config/database";
 import { defaultSurveyVersionSettings } from "./survey.defaults";
 import type { ISurveyRepository } from "./survey.repository.interface";
 import type {
+  BulkUpdateOptionScoresInput,
+  CalculatedScoreTargetType,
   CreateDraftFromPublishedVersionInput,
   CreateOptionInput,
   CreateQuestionInput,
@@ -23,21 +25,26 @@ import type {
   ReorderOptionsInput,
   ReorderQuestionsInput,
   ReorderSectionsInput,
+  SurveyCalculatedScore,
+  SurveyCalculatedScoreQuestion,
+  SurveyCalculatedScoreTarget,
   Survey,
   SurveySection,
   SurveyVersion,
   SurveyVersionDefinition,
+  UpdateCalculatedScoreInput,
   UpdateDraftVersionInput,
   UpdateOptionInput,
   UpdateQuestionInput,
   UpdateSectionInput,
   UpdateSurveyLifecycleInput,
-  UpdateSurveyMetadataInput
+  UpdateSurveyMetadataInput,
+  UpsertCalculatedScoreInput
 } from "./survey.types";
 
 type DatabaseClient = {
   query: (sql: string, values?: unknown[]) => Promise<{ rows: unknown[] }>;
-  release: () => void;
+  release?: () => void;
 };
 
 const SECTION_REORDER_TEMP_OFFSET = 1000000;
@@ -112,10 +119,49 @@ const mapOption = (row: Record<string, unknown>): QuestionOption => ({
   label: String(row.label),
   position: Number(row.position),
   questionId: String(row.question_id),
+  scoreValue: row.score_value === null || row.score_value === undefined ? null : Number(row.score_value),
   settings: (row.settings as QuestionOption["settings"]) ?? {},
   stableKey: String(row.stable_key),
   updatedAt: String(row.updated_at),
   value: String(row.value)
+});
+
+const mapCalculatedScoreQuestion = (row: Record<string, unknown>): SurveyCalculatedScoreQuestion => ({
+  calculatedScoreId: String(row.calculated_score_id),
+  createdAt: String(row.created_at),
+  id: String(row.id),
+  position: Number(row.position),
+  questionId: String(row.question_id),
+  weight: Number(row.weight)
+});
+
+const mapCalculatedScoreTarget = (row: Record<string, unknown>): SurveyCalculatedScoreTarget => ({
+  calculatedScoreId: String(row.calculated_score_id),
+  createdAt: String(row.created_at),
+  id: String(row.id),
+  targetId: String(row.target_id),
+  targetType: row.target_type as CalculatedScoreTargetType,
+  updatedAt: String(row.updated_at)
+});
+
+const mapCalculatedScore = (
+  row: Record<string, unknown>,
+  questions: SurveyCalculatedScoreQuestion[],
+  targets: SurveyCalculatedScoreTarget[]
+): SurveyCalculatedScore => ({
+  calculationType: row.calculation_type as SurveyCalculatedScore["calculationType"],
+  createdAt: String(row.created_at),
+  decimalPlaces: Number(row.decimal_places),
+  id: String(row.id),
+  key: String(row.key),
+  name: String(row.name),
+  questions,
+  requireAllAnswers: Boolean(row.require_all_answers),
+  surveyVersionId: String(row.survey_version_id),
+  targets,
+  thresholdOperator: row.threshold_operator as SurveyCalculatedScore["thresholdOperator"],
+  thresholdValue: Number(row.threshold_value),
+  updatedAt: String(row.updated_at)
 });
 
 const withTransaction = async <T>(callback: (client: DatabaseClient) => Promise<T>): Promise<T> => {
@@ -132,6 +178,32 @@ const withTransaction = async <T>(callback: (client: DatabaseClient) => Promise<
   } finally {
     client.release();
   }
+};
+
+const loadCalculatedScoreById = async (
+  client: Pick<DatabaseClient, "query">,
+  calculatedScoreId: string
+): Promise<SurveyCalculatedScore | null> => {
+  const result = await client.query("select * from survey_calculated_scores where id = $1", [calculatedScoreId]);
+
+  if (!("rowCount" in result ? result.rowCount : result.rows.length)) {
+    return null;
+  }
+
+  const [questionsResult, targetsResult] = await Promise.all([
+    client.query("select * from survey_calculated_score_questions where calculated_score_id = $1 order by position asc", [
+      calculatedScoreId
+    ]),
+    client.query("select * from survey_score_follow_up_targets where calculated_score_id = $1 order by created_at asc", [
+      calculatedScoreId
+    ])
+  ]);
+
+  return mapCalculatedScore(
+    result.rows[0] as Record<string, unknown>,
+    (questionsResult.rows as Record<string, unknown>[]).map((row) => mapCalculatedScoreQuestion(row)),
+    (targetsResult.rows as Record<string, unknown>[]).map((row) => mapCalculatedScoreTarget(row))
+  );
 };
 
 const countSectionsByVersion = async (client: DatabaseClient, surveyVersionId: string): Promise<number> => {
@@ -344,7 +416,7 @@ export class SurveyRepository implements ISurveyRepository {
       return null;
     }
 
-    const [sectionsResult, questionsResult, optionsResult] = await Promise.all([
+    const [sectionsResult, questionsResult, optionsResult, calculatedScores] = await Promise.all([
       databasePool.query("select * from survey_sections where survey_version_id = $1 order by position asc", [versionId]),
       databasePool.query("select * from questions where survey_version_id = $1 order by section_id, position asc", [versionId]),
       databasePool.query(
@@ -356,10 +428,12 @@ export class SurveyRepository implements ISurveyRepository {
           order by qo.question_id, qo.position asc
         `,
         [versionId]
-      )
+      ),
+      this.listCalculatedScoresByVersion(versionId)
     ]);
 
     return {
+      calculatedScores,
       options: optionsResult.rows.map((row: Record<string, unknown>) => mapOption(row)),
       questions: questionsResult.rows.map((row: Record<string, unknown>) => mapQuestion(row)),
       sections: sectionsResult.rows.map((row: Record<string, unknown>) => mapSection(row)),
@@ -715,8 +789,8 @@ export class SurveyRepository implements ISurveyRepository {
   public async createOption(input: CreateOptionInput): Promise<QuestionOption> {
     const result = await databasePool.query(
       `
-        insert into question_options (question_id, stable_key, label, value, position, settings)
-        values ($1, $2, $3, $4, $5, $6::jsonb)
+        insert into question_options (question_id, stable_key, label, value, score_value, position, settings)
+        values ($1, $2, $3, $4, $5, $6, $7::jsonb)
         returning *
       `,
       [
@@ -724,6 +798,7 @@ export class SurveyRepository implements ISurveyRepository {
         createStableKey("opt"),
         input.label,
         input.value,
+        null,
         input.position,
         JSON.stringify(input.settings)
       ]
@@ -736,14 +811,33 @@ export class SurveyRepository implements ISurveyRepository {
     const result = await databasePool.query(
       `
         update question_options
-        set label = $2, value = $3, position = $4, settings = $5::jsonb, updated_at = now()
+        set label = $2, value = $3, position = $4, score_value = $5, settings = $6::jsonb, updated_at = now()
         where id = $1
         returning *
       `,
-      [input.optionId, input.label, input.value, input.position, JSON.stringify(input.settings)]
+      [input.optionId, input.label, input.value, input.position, input.scoreValue, JSON.stringify(input.settings)]
     );
 
     return mapOption(result.rows[0] as Record<string, unknown>);
+  }
+
+  public async bulkUpdateOptionScores(input: BulkUpdateOptionScoresInput): Promise<QuestionOption[]> {
+    await withTransaction(async (client) => {
+      for (const option of input.options) {
+        await client.query(
+          `
+            update question_options
+            set score_value = $2,
+                updated_at = now()
+            where id = $1
+              and question_id = $3
+          `,
+          [option.optionId, option.scoreValue, input.questionId]
+        );
+      }
+    });
+
+    return this.listOptionsByQuestion(input.questionId);
   }
 
   public async deleteOption(input: DeleteOptionInput): Promise<void> {
@@ -800,5 +894,200 @@ export class SurveyRepository implements ISurveyRepository {
       [questionId]
     );
     return result.rows.map((row: Record<string, unknown>) => mapOption(row));
+  }
+
+  public async listOptionsByQuestionIds(questionIds: string[]): Promise<QuestionOption[]> {
+    if (questionIds.length === 0) {
+      return [];
+    }
+
+    const result = await databasePool.query(
+      "select * from question_options where question_id = any($1::uuid[]) order by question_id asc, position asc",
+      [questionIds]
+    );
+    return result.rows.map((row: Record<string, unknown>) => mapOption(row));
+  }
+
+  public async createCalculatedScore(input: UpsertCalculatedScoreInput): Promise<SurveyCalculatedScore> {
+    return withTransaction(async (client) => {
+      const result = await client.query(
+        `
+          insert into survey_calculated_scores (
+            survey_version_id,
+            name,
+            key,
+            calculation_type,
+            threshold_operator,
+            threshold_value,
+            require_all_answers,
+            decimal_places
+          )
+          values ($1, $2, $3, $4, $5, $6, $7, $8)
+          returning *
+        `,
+        [
+          input.surveyVersionId,
+          input.name,
+          input.key,
+          input.calculationType,
+          input.thresholdOperator,
+          input.thresholdValue,
+          input.requireAllAnswers,
+          input.decimalPlaces
+        ]
+      );
+
+      const calculatedScoreId = String((result.rows[0] as Record<string, unknown>).id);
+
+      for (const [index, questionId] of input.sourceQuestionIds.entries()) {
+        await client.query(
+          `
+            insert into survey_calculated_score_questions (calculated_score_id, question_id, weight, position)
+            values ($1, $2, $3, $4)
+          `,
+          [calculatedScoreId, questionId, 1, index]
+        );
+      }
+
+      for (const target of input.targets) {
+        await client.query(
+          `
+            insert into survey_score_follow_up_targets (calculated_score_id, target_type, target_id)
+            values ($1, $2, $3)
+          `,
+          [calculatedScoreId, target.targetType, target.targetId]
+        );
+      }
+
+      const created = await loadCalculatedScoreById(client, calculatedScoreId);
+
+      if (!created) {
+        throw new AppError(ERROR_CODES.resourceNotFound, "Calculated score was not found after creation.", 404);
+      }
+
+      return created;
+    });
+  }
+
+  public async updateCalculatedScore(input: UpdateCalculatedScoreInput): Promise<SurveyCalculatedScore> {
+    return withTransaction(async (client) => {
+      await client.query(
+        `
+          update survey_calculated_scores
+          set name = $2,
+              key = $3,
+              calculation_type = $4,
+              threshold_operator = $5,
+              threshold_value = $6,
+              require_all_answers = $7,
+              decimal_places = $8,
+              updated_at = now()
+          where id = $1
+        `,
+        [
+          input.calculatedScoreId,
+          input.name,
+          input.key,
+          input.calculationType,
+          input.thresholdOperator,
+          input.thresholdValue,
+          input.requireAllAnswers,
+          input.decimalPlaces
+        ]
+      );
+
+      await client.query("delete from survey_calculated_score_questions where calculated_score_id = $1", [input.calculatedScoreId]);
+      await client.query("delete from survey_score_follow_up_targets where calculated_score_id = $1", [input.calculatedScoreId]);
+
+      for (const [index, questionId] of input.sourceQuestionIds.entries()) {
+        await client.query(
+          `
+            insert into survey_calculated_score_questions (calculated_score_id, question_id, weight, position)
+            values ($1, $2, $3, $4)
+          `,
+          [input.calculatedScoreId, questionId, 1, index]
+        );
+      }
+
+      for (const target of input.targets) {
+        await client.query(
+          `
+            insert into survey_score_follow_up_targets (calculated_score_id, target_type, target_id)
+            values ($1, $2, $3)
+          `,
+          [input.calculatedScoreId, target.targetType, target.targetId]
+        );
+      }
+
+      const updated = await loadCalculatedScoreById(client, input.calculatedScoreId);
+
+      if (!updated) {
+        throw new AppError(ERROR_CODES.resourceNotFound, "Calculated score was not found after update.", 404);
+      }
+
+      return updated;
+    });
+  }
+
+  public async deleteCalculatedScore(calculatedScoreId: string): Promise<void> {
+    await databasePool.query("delete from survey_calculated_scores where id = $1", [calculatedScoreId]);
+  }
+
+  public async findCalculatedScoreById(calculatedScoreId: string): Promise<SurveyCalculatedScore | null> {
+    return loadCalculatedScoreById(databasePool, calculatedScoreId);
+  }
+
+  public async listCalculatedScoresByVersion(versionId: string): Promise<SurveyCalculatedScore[]> {
+    const [scoresResult, questionsResult, targetsResult] = await Promise.all([
+      databasePool.query(
+        "select * from survey_calculated_scores where survey_version_id = $1 order by created_at asc",
+        [versionId]
+      ),
+      databasePool.query(
+        `
+          select question_map.*
+          from survey_calculated_score_questions question_map
+          inner join survey_calculated_scores score on score.id = question_map.calculated_score_id
+          where score.survey_version_id = $1
+          order by question_map.calculated_score_id asc, question_map.position asc
+        `,
+        [versionId]
+      ),
+      databasePool.query(
+        `
+          select target.*
+          from survey_score_follow_up_targets target
+          inner join survey_calculated_scores score on score.id = target.calculated_score_id
+          where score.survey_version_id = $1
+          order by target.calculated_score_id asc, target.created_at asc
+        `,
+        [versionId]
+      )
+    ]);
+
+    const questionsByScoreId = new Map<string, SurveyCalculatedScoreQuestion[]>();
+    const targetsByScoreId = new Map<string, SurveyCalculatedScoreTarget[]>();
+
+    for (const row of questionsResult.rows as Record<string, unknown>[]) {
+      const question = mapCalculatedScoreQuestion(row);
+      const items = questionsByScoreId.get(question.calculatedScoreId) ?? [];
+      items.push(question);
+      questionsByScoreId.set(question.calculatedScoreId, items);
+    }
+
+    for (const row of targetsResult.rows as Record<string, unknown>[]) {
+      const target = mapCalculatedScoreTarget(row);
+      const items = targetsByScoreId.get(target.calculatedScoreId) ?? [];
+      items.push(target);
+      targetsByScoreId.set(target.calculatedScoreId, items);
+    }
+
+    return scoresResult.rows.map((row: unknown) =>
+      mapCalculatedScore(
+        row as Record<string, unknown>,
+        questionsByScoreId.get(String((row as Record<string, unknown>).id)) ?? [],
+        targetsByScoreId.get(String((row as Record<string, unknown>).id)) ?? []
+      )
+    );
   }
 }

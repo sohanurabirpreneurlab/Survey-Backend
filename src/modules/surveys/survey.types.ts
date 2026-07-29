@@ -133,6 +133,7 @@ export type Question = {
 export type QuestionOption = {
   id: string;
   questionId: string;
+  scoreValue: number | null;
   stableKey: string;
   label: string;
   value: string;
@@ -142,7 +143,56 @@ export type QuestionOption = {
   updatedAt: string;
 };
 
+export const CALCULATED_SCORE_CALCULATION_TYPES = ["average"] as const;
+export const CALCULATED_SCORE_THRESHOLD_OPERATORS = [
+  "less_than",
+  "less_than_or_equal",
+  "equal",
+  "greater_than_or_equal",
+  "greater_than"
+] as const;
+export const CALCULATED_SCORE_TARGET_TYPES = ["question", "section"] as const;
+
+export type CalculatedScoreCalculationType = (typeof CALCULATED_SCORE_CALCULATION_TYPES)[number];
+export type CalculatedScoreThresholdOperator = (typeof CALCULATED_SCORE_THRESHOLD_OPERATORS)[number];
+export type CalculatedScoreTargetType = (typeof CALCULATED_SCORE_TARGET_TYPES)[number];
+
+export type SurveyCalculatedScoreQuestion = {
+  calculatedScoreId: string;
+  createdAt: string;
+  id: string;
+  position: number;
+  questionId: string;
+  weight: number;
+};
+
+export type SurveyCalculatedScoreTarget = {
+  calculatedScoreId: string;
+  createdAt: string;
+  id: string;
+  targetId: string;
+  targetType: CalculatedScoreTargetType;
+  updatedAt: string;
+};
+
+export type SurveyCalculatedScore = {
+  calculationType: CalculatedScoreCalculationType;
+  createdAt: string;
+  decimalPlaces: number;
+  id: string;
+  key: string;
+  name: string;
+  questions: SurveyCalculatedScoreQuestion[];
+  requireAllAnswers: boolean;
+  surveyVersionId: string;
+  targets: SurveyCalculatedScoreTarget[];
+  thresholdOperator: CalculatedScoreThresholdOperator;
+  thresholdValue: number;
+  updatedAt: string;
+};
+
 export type SurveyVersionDefinition = {
+  calculatedScores: SurveyCalculatedScore[];
   version: SurveyVersion;
   sections: SurveySection[];
   questions: Question[];
@@ -302,6 +352,7 @@ export type UpdateOptionInput = {
   label: string;
   optionId: string;
   position: number;
+  scoreValue: number | null;
   settings: Record<string, unknown>;
   value: string;
 };
@@ -312,5 +363,33 @@ export type DeleteOptionInput = {
 
 export type ReorderOptionsInput = {
   items: Array<{ optionId: string; position: number }>;
+  questionId: string;
+};
+
+export type UpsertCalculatedScoreInput = {
+  calculationType: CalculatedScoreCalculationType;
+  decimalPlaces: number;
+  key: string;
+  name: string;
+  requireAllAnswers: boolean;
+  sourceQuestionIds: string[];
+  surveyVersionId: string;
+  targets: Array<{
+    targetId: string;
+    targetType: CalculatedScoreTargetType;
+  }>;
+  thresholdOperator: CalculatedScoreThresholdOperator;
+  thresholdValue: number;
+};
+
+export type UpdateCalculatedScoreInput = UpsertCalculatedScoreInput & {
+  calculatedScoreId: string;
+};
+
+export type BulkUpdateOptionScoresInput = {
+  options: Array<{
+    optionId: string;
+    scoreValue: number | null;
+  }>;
   questionId: string;
 };

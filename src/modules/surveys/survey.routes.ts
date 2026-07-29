@@ -10,10 +10,13 @@ import {
   closeSurvey,
   compareVersions,
   createDraft,
+  createCalculatedScore,
   createOption,
   createQuestion,
   createSection,
   createSurvey,
+  bulkUpdateOptionScores,
+  deleteCalculatedScore,
   updateDraft,
   deleteOption,
   deleteQuestion,
@@ -23,6 +26,7 @@ import {
   getSurveyShare,
   getVersion,
   listSurveys,
+  listCalculatedScores,
   listVersions,
   publishDraft,
   reorderOptions,
@@ -32,11 +36,15 @@ import {
   updateOption,
   updateQuestion,
   updateSection,
-  updateSurvey
+  updateSurvey,
+  updateCalculatedScore
 } from "./survey.controller";
 import {
+  bulkUpdateOptionScoresValidators,
+  calculatedScoreIdParamValidator,
   closeSurveyValidators,
   compareVersionsValidators,
+  createCalculatedScoreValidators,
   createDraftValidators,
   createOptionValidators,
   createQuestionValidators,
@@ -49,12 +57,14 @@ import {
   optionIdParamValidator,
   publishDraftValidators,
   questionIdParamValidator,
+  deleteCalculatedScoreValidators,
   reorderOptionsValidators,
   reorderQuestionsValidators,
   reorderSectionsValidators,
   reopenSurveyValidators,
   sectionIdParamValidator,
   surveyIdParamValidator,
+  updateCalculatedScoreValidators,
   updateOptionValidators,
   updateDraftValidators,
   updateQuestionValidators,
@@ -155,6 +165,12 @@ surveyRouter.post(
   asyncHandler(createOption)
 );
 surveyRouter.patch(
+  "/:surveyId/draft/questions/:questionId/options/scores",
+  bulkUpdateOptionScoresValidators,
+  validateRequest,
+  asyncHandler(bulkUpdateOptionScores)
+);
+surveyRouter.patch(
   "/:surveyId/draft/questions/:questionId/options/:optionId",
   updateOptionValidators,
   validateRequest,
@@ -171,6 +187,31 @@ surveyRouter.patch(
   reorderOptionsValidators,
   validateRequest,
   asyncHandler(reorderOptions)
+);
+
+surveyRouter.get(
+  "/:surveyId/draft/calculated-scores",
+  surveyIdParamValidator,
+  validateRequest,
+  asyncHandler(listCalculatedScores)
+);
+surveyRouter.post(
+  "/:surveyId/draft/calculated-scores",
+  createCalculatedScoreValidators,
+  validateRequest,
+  asyncHandler(createCalculatedScore)
+);
+surveyRouter.patch(
+  "/:surveyId/draft/calculated-scores/:calculatedScoreId",
+  updateCalculatedScoreValidators,
+  validateRequest,
+  asyncHandler(updateCalculatedScore)
+);
+surveyRouter.delete(
+  "/:surveyId/draft/calculated-scores/:calculatedScoreId",
+  deleteCalculatedScoreValidators,
+  validateRequest,
+  asyncHandler(deleteCalculatedScore)
 );
 
 export { surveyRouter };

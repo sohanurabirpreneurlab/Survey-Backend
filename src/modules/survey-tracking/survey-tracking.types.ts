@@ -51,18 +51,34 @@ export type SurveyTrackingResponseItem = {
   surveyVersionId: string;
 };
 
+export type SurveyTrackingResponseAnswer = {
+  optionIds: string[];
+  questionId: string;
+  questionStableKey: string;
+  valueBoolean: boolean | null;
+  valueDate: string | null;
+  valueJson: unknown;
+  valueNumber: number | null;
+  valueText: string | null;
+  valueTimestamp: string | null;
+};
+
+export type SurveyTrackingAllResponsesColumn = {
+  questionStableKey: string;
+  title: string;
+};
+
+export type SurveyTrackingAllResponsesItem = SurveyTrackingResponseItem & {
+  answers: Array<SurveyTrackingResponseAnswer & { displayValue: string }>;
+};
+
+export type SurveyTrackingResponsesList = {
+  columns: SurveyTrackingAllResponsesColumn[];
+  items: SurveyTrackingAllResponsesItem[];
+};
+
 export type SurveyTrackingResponsePreview = {
-  answers: Array<{
-    optionIds: string[];
-    questionId: string;
-    questionStableKey: string;
-    valueBoolean: boolean | null;
-    valueDate: string | null;
-    valueJson: unknown;
-    valueNumber: number | null;
-    valueText: string | null;
-    valueTimestamp: string | null;
-  }>;
+  answers: SurveyTrackingResponseAnswer[];
   definition: SurveyVersionDefinition;
   response: SurveyTrackingResponseItem;
   survey: {

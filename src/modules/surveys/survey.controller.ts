@@ -283,6 +283,7 @@ export const updateOption = async (request: Request, response: Response): Promis
       label: request.body.label,
       optionId: getParam(request.params.optionId),
       position: Number(request.body.position),
+      scoreValue: request.body.scoreValue ?? null,
       settings: request.body.settings ?? {},
       value: request.body.value
     },
@@ -311,4 +312,74 @@ export const reorderOptions = async (request: Request, response: Response): Prom
     request.admin!.userId
   );
   sendSuccess(response, "Options reordered successfully.", options);
+};
+
+export const bulkUpdateOptionScores = async (request: Request, response: Response): Promise<void> => {
+  const options = await surveyService.bulkUpdateOptionScores(
+    {
+      options: request.body.options.map((option: { optionId: string; scoreValue: number | null }) => ({
+        optionId: option.optionId,
+        scoreValue: option.scoreValue ?? null
+      })),
+      questionId: getParam(request.params.questionId)
+    },
+    getParam(request.params.surveyId),
+    request.admin!.userId
+  );
+  sendSuccess(response, "Option scores updated successfully.", options);
+};
+
+export const listCalculatedScores = async (request: Request, response: Response): Promise<void> => {
+  const scores = await surveyService.listCalculatedScores(getParam(request.params.surveyId), request.admin!.userId);
+  sendSuccess(response, "Calculated scores retrieved successfully.", scores);
+};
+
+export const createCalculatedScore = async (request: Request, response: Response): Promise<void> => {
+  const score = await surveyService.createCalculatedScore(
+    {
+      calculationType: request.body.calculationType,
+      decimalPlaces: Number(request.body.decimalPlaces),
+      key: request.body.key,
+      name: request.body.name,
+      requireAllAnswers: Boolean(request.body.requireAllAnswers),
+      sourceQuestionIds: request.body.sourceQuestionIds ?? [],
+      surveyVersionId: "",
+      targets: request.body.targets ?? [],
+      thresholdOperator: request.body.thresholdOperator,
+      thresholdValue: Number(request.body.thresholdValue)
+    },
+    getParam(request.params.surveyId),
+    request.admin!.userId
+  );
+  sendCreated(response, "Calculated score created successfully.", score);
+};
+
+export const updateCalculatedScore = async (request: Request, response: Response): Promise<void> => {
+  const score = await surveyService.updateCalculatedScore(
+    {
+      calculatedScoreId: getParam(request.params.calculatedScoreId),
+      calculationType: request.body.calculationType,
+      decimalPlaces: Number(request.body.decimalPlaces),
+      key: request.body.key,
+      name: request.body.name,
+      requireAllAnswers: Boolean(request.body.requireAllAnswers),
+      sourceQuestionIds: request.body.sourceQuestionIds ?? [],
+      surveyVersionId: "",
+      targets: request.body.targets ?? [],
+      thresholdOperator: request.body.thresholdOperator,
+      thresholdValue: Number(request.body.thresholdValue)
+    },
+    getParam(request.params.surveyId),
+    request.admin!.userId
+  );
+  sendSuccess(response, "Calculated score updated successfully.", score);
+};
+
+export const deleteCalculatedScore = async (request: Request, response: Response): Promise<void> => {
+  await surveyService.deleteCalculatedScore(
+    getParam(request.params.calculatedScoreId),
+    getParam(request.params.surveyId),
+    request.admin!.userId
+  );
+  sendSuccess(response, "Calculated score deleted successfully.", null);
 };

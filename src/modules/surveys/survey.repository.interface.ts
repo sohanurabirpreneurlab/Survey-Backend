@@ -1,31 +1,35 @@
 import type {
-  CreateDraftFromPublishedVersionInput,
-  CreateOptionInput,
-  CreateQuestionInput,
-  CreateSectionInput,
-  CreateSurveyInput,
+  BulkUpdateOptionScoresInput,
   CreateSurveyResult,
+  CreateSurveyInput,
   DeleteOptionInput,
   DeleteQuestionInput,
   DeleteSectionInput,
-  ListSurveysInput,
-  ListSurveysResult,
-  PublishDraftInput,
+  CreateDraftFromPublishedVersionInput,
   Question,
   QuestionOption,
   ReorderOptionsInput,
   ReorderQuestionsInput,
   ReorderSectionsInput,
   Survey,
+  SurveyCalculatedScore,
   SurveySection,
   SurveyVersion,
   SurveyVersionDefinition,
+  UpdateCalculatedScoreInput,
   UpdateDraftVersionInput,
   UpdateOptionInput,
   UpdateQuestionInput,
   UpdateSectionInput,
   UpdateSurveyLifecycleInput,
-  UpdateSurveyMetadataInput
+  UpdateSurveyMetadataInput,
+  UpsertCalculatedScoreInput,
+  CreateOptionInput,
+  CreateQuestionInput,
+  CreateSectionInput,
+  ListSurveysInput,
+  ListSurveysResult,
+  PublishDraftInput,
 } from "./survey.types";
 
 export interface ISurveyRepository {
@@ -56,12 +60,19 @@ export interface ISurveyRepository {
   reorderQuestions(input: ReorderQuestionsInput): Promise<Question[]>;
   createOption(input: CreateOptionInput): Promise<QuestionOption>;
   updateOption(input: UpdateOptionInput): Promise<QuestionOption>;
+  bulkUpdateOptionScores(input: BulkUpdateOptionScoresInput): Promise<QuestionOption[]>;
   deleteOption(input: DeleteOptionInput): Promise<void>;
   reorderOptions(input: ReorderOptionsInput): Promise<QuestionOption[]>;
+  createCalculatedScore(input: UpsertCalculatedScoreInput): Promise<SurveyCalculatedScore>;
+  updateCalculatedScore(input: UpdateCalculatedScoreInput): Promise<SurveyCalculatedScore>;
+  deleteCalculatedScore(calculatedScoreId: string): Promise<void>;
+  findCalculatedScoreById(calculatedScoreId: string): Promise<SurveyCalculatedScore | null>;
+  listCalculatedScoresByVersion(versionId: string): Promise<SurveyCalculatedScore[]>;
   findSectionById(sectionId: string): Promise<SurveySection | null>;
   findQuestionById(questionId: string): Promise<Question | null>;
   findOptionById(optionId: string): Promise<QuestionOption | null>;
   listSectionsByVersion(versionId: string): Promise<SurveySection[]>;
   listQuestionsByVersion(versionId: string): Promise<Question[]>;
   listOptionsByQuestion(questionId: string): Promise<QuestionOption[]>;
+  listOptionsByQuestionIds(questionIds: string[]): Promise<QuestionOption[]>;
 }

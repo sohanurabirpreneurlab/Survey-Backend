@@ -9,12 +9,16 @@ import { OrganizationService } from "../organizations/organization.service";
 import { compareSurveyVersions } from "./survey-version-diff.service";
 import { SurveyRepository } from "./survey.repository";
 import type { ISurveyRepository } from "./survey.repository.interface";
+import { CalculatedScoreConfigurationService } from "./calculated-score-configuration.service";
 import { validateDraftForPublishing } from "./survey-publish.validator";
 import type {
+  BulkUpdateOptionScoresInput,
+  SurveyCalculatedScore,
   CreateOptionInput,
   CreateQuestionInput,
   CreateSectionInput,
   CreateSurveyInput,
+  UpdateCalculatedScoreInput,
   DeleteOptionInput,
   DeleteQuestionInput,
   DeleteSectionInput,
@@ -30,6 +34,7 @@ import type {
   SurveySection,
   SurveyVersion,
   SurveyVersionSettings,
+  UpsertCalculatedScoreInput,
   UpdateOptionInput,
   UpdateDraftVersionInput,
   UpdateQuestionInput,
@@ -57,7 +62,8 @@ export class SurveyService {
     private readonly surveyRepository: ISurveyRepository = new SurveyRepository(),
     private readonly organizationService = new OrganizationService(),
     private readonly organizationRepository = new OrganizationRepository(),
-    private readonly authRepository = new AuthRepository()
+    private readonly authRepository = new AuthRepository(),
+    private readonly calculatedScoreConfigurationService = new CalculatedScoreConfigurationService()
   ) {}
 
   public async createSurvey(input: CreateSurveyInput) {
@@ -475,7 +481,7 @@ export class SurveyService {
   }
 
   public async updateOption(input: UpdateOptionInput, surveyId: string, userId: string) {
-    await this.getEditableDraftContext(surveyId, userId);
+    const context = await this.getEditableDraftContext(surveyId, userId);
     const option = await this.surveyRepository.findOptionById(input.optionId);
 
     if (!option) {
@@ -488,11 +494,41 @@ export class SurveyService {
       throw new AppError(ERROR_CODES.questionNotFound, "Question was not found.", 404);
     }
 
+    if (question.surveyVersionId !== context.draftVersion.id) {
+      throw new AppError(ERROR_CODES.publishedVersionImmutable, "Only the current draft may be edited.", 409);
+    }
+
     if (!questionSupportsOptions(question.type)) {
       throw new AppError(ERROR_CODES.invalidSurveyStructure, "This question type does not support options.", 400);
     }
 
     return this.surveyRepository.updateOption(input);
+  }
+
+  public async bulkUpdateOptionScores(input: BulkUpdateOptionScoresInput, surveyId: string, userId: string) {
+    const context = await this.getEditableDraftContext(surveyId, userId);
+    const question = await this.surveyRepository.findQuestionById(input.questionId);
+
+    if (!question) {
+      throw new AppError(ERROR_CODES.questionNotFound, "Question was not found.", 404);
+    }
+
+    if (question.surveyVersionId !== context.draftVersion.id) {
+      throw new AppError(ERROR_CODES.publishedVersionImmutable, "Only the current draft may be edited.", 409);
+    }
+
+    const options = await this.surveyRepository.listOptionsByQuestion(input.questionId);
+    this.assertExactReorderSet(
+      options.map((option) => option.id),
+      input.options.map((option) => option.optionId),
+      "options"
+    );
+
+    if (new Set(input.options.map((option) => option.optionId)).size !== input.options.length) {
+      throw new AppError(ERROR_CODES.validationError, "Duplicate option IDs are not allowed.", 400);
+    }
+
+    return this.surveyRepository.bulkUpdateOptionScores(input);
   }
 
   public async deleteOption(input: DeleteOptionInput, surveyId: string, userId: string): Promise<void> {
@@ -523,6 +559,74 @@ export class SurveyService {
     return this.surveyRepository.reorderOptions(input);
   }
 
+  public async listCalculatedScores(surveyId: string, userId: string): Promise<SurveyCalculatedScore[]> {
+    const context = await this.getEditableDraftContext(surveyId, userId);
+    return this.surveyRepository.listCalculatedScoresByVersion(context.draftVersion.id);
+  }
+
+  public async createCalculatedScore(
+    input: UpsertCalculatedScoreInput,
+    surveyId: string,
+    userId: string
+  ): Promise<SurveyCalculatedScore> {
+    const context = await this.getEditableDraftContext(surveyId, userId);
+    const definition = await this.requireDraftDefinition(context.draftVersion.id);
+
+    this.calculatedScoreConfigurationService.validateUpsert(
+      { ...input, surveyVersionId: context.draftVersion.id },
+      definition
+    );
+
+    return this.surveyRepository.createCalculatedScore({
+      ...input,
+      surveyVersionId: context.draftVersion.id
+    });
+  }
+
+  public async updateCalculatedScore(
+    input: UpdateCalculatedScoreInput,
+    surveyId: string,
+    userId: string
+  ): Promise<SurveyCalculatedScore> {
+    const context = await this.getEditableDraftContext(surveyId, userId);
+    const existing = await this.surveyRepository.findCalculatedScoreById(input.calculatedScoreId);
+
+    if (!existing) {
+      throw new AppError(ERROR_CODES.calculatedScoreNotFound, "Calculated score was not found.", 404);
+    }
+
+    if (existing.surveyVersionId !== context.draftVersion.id) {
+      throw new AppError(ERROR_CODES.publishedVersionImmutable, "Only the current draft may be edited.", 409);
+    }
+
+    const definition = await this.requireDraftDefinition(context.draftVersion.id);
+    this.calculatedScoreConfigurationService.validateUpsert(
+      { ...input, surveyVersionId: context.draftVersion.id },
+      definition,
+      input.calculatedScoreId
+    );
+
+    return this.surveyRepository.updateCalculatedScore({
+      ...input,
+      surveyVersionId: context.draftVersion.id
+    });
+  }
+
+  public async deleteCalculatedScore(calculatedScoreId: string, surveyId: string, userId: string): Promise<void> {
+    const context = await this.getEditableDraftContext(surveyId, userId);
+    const existing = await this.surveyRepository.findCalculatedScoreById(calculatedScoreId);
+
+    if (!existing) {
+      throw new AppError(ERROR_CODES.calculatedScoreNotFound, "Calculated score was not found.", 404);
+    }
+
+    if (existing.surveyVersionId !== context.draftVersion.id) {
+      throw new AppError(ERROR_CODES.publishedVersionImmutable, "Only the current draft may be edited.", 409);
+    }
+
+    await this.surveyRepository.deleteCalculatedScore(calculatedScoreId);
+  }
+
   private async requireSurvey(surveyId: string): Promise<Survey> {
     const survey = await this.surveyRepository.findSurveyById(surveyId);
 
@@ -531,6 +635,16 @@ export class SurveyService {
     }
 
     return survey;
+  }
+
+  private async requireDraftDefinition(versionId: string) {
+    const definition = await this.surveyRepository.getVersionDefinition(versionId);
+
+    if (!definition) {
+      throw new AppError(ERROR_CODES.versionNotFound, "Draft version definition was not found.", 404);
+    }
+
+    return definition;
   }
 
   private async getEditableDraftContext(surveyId: string, userId: string): Promise<EditableDraftContext> {

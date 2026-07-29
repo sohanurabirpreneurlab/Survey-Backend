@@ -6,6 +6,7 @@ import { validateDraftForPublishing } from "../../src/modules/surveys/survey-pub
 import type { SurveyVersionDefinition } from "../../src/modules/surveys/survey.types";
 
 const validDefinition = (): SurveyVersionDefinition => ({
+  calculatedScores: [],
   options: [
     {
       createdAt: "",
@@ -13,6 +14,7 @@ const validDefinition = (): SurveyVersionDefinition => ({
       label: "Yes",
       position: 0,
       questionId: "q-1",
+      scoreValue: 1,
       settings: {},
       stableKey: "opt_yes",
       updatedAt: "",
@@ -24,6 +26,7 @@ const validDefinition = (): SurveyVersionDefinition => ({
       label: "No",
       position: 1,
       questionId: "q-1",
+      scoreValue: 0,
       settings: {},
       stableKey: "opt_no",
       updatedAt: "",

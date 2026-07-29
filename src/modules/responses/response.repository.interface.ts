@@ -1,4 +1,5 @@
 import type { SurveyResponse } from "./response.types";
+import type { AnswerRecord, ResponseScoreRecord } from "./response.types";
 
 export interface IResponseRepository {
   findCurrentInProgress(sessionId: string): Promise<SurveyResponse | null>;
@@ -15,11 +16,21 @@ export interface IResponseRepository {
     questionId: string;
     questionStableKey: string;
     responseId: string;
+    scoreSnapshot: number | null;
     valueBoolean: boolean | null;
     valueJson: unknown;
     valueNumber: number | null;
     valueText: string | null;
     valueTimestamp: string | null;
   }): Promise<SurveyResponse | null>;
-  submitResponse(responseId: string, sessionId: string): Promise<SurveyResponse>;
+  listAnswersForResponse(responseId: string): Promise<AnswerRecord[]>;
+  submitResponse(
+    responseId: string,
+    sessionId: string,
+    input?: {
+      hiddenQuestionIds?: string[];
+      responseScores?: ResponseScoreRecord[];
+      visibleRequiredQuestionIds?: string[];
+    }
+  ): Promise<SurveyResponse>;
 }

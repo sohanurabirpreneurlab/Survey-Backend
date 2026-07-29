@@ -1,3 +1,4 @@
+import { validateCalculatedScoresInDefinition } from "./calculated-score-configuration.service";
 import type { Question, QuestionOption, SurveySection, SurveyVersionDefinition } from "./survey.types";
 
 type ValidationIssue = {
@@ -124,6 +125,8 @@ export const validateDraftForPublishing = (
       }
     }
   }
+
+  errors.push(...validateCalculatedScoresInDefinition(definition));
 
   return {
     errors,

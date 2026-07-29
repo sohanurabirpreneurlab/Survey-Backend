@@ -2,6 +2,7 @@ import { buildPaginatedResult } from "../../common/utils/pagination";
 import { databasePool } from "../../config/database";
 import type { ISurveyTrackingRepository } from "./survey-tracking.repository.interface";
 import type {
+  SurveyTrackingResponseAnswer,
   SurveyTrackingInvitationRecipient,
   SurveyTrackingResponseItem,
   SurveyTrackingResponsePreview,
@@ -54,6 +55,19 @@ const mapResponse = (row: Record<string, unknown>): SurveyTrackingResponseItem =
   submittedAt: row.submitted_at ? String(row.submitted_at) : null,
   surveyId: String(row.survey_id),
   surveyVersionId: String(row.survey_version_id)
+});
+
+const mapAnswer = (row: Record<string, unknown>): SurveyTrackingResponseAnswer & { responseId: string } => ({
+  optionIds: Array.isArray(row.option_ids) ? row.option_ids.map((value) => String(value)) : [],
+  questionId: String(row.question_id),
+  questionStableKey: String(row.question_stable_key),
+  responseId: String(row.response_id),
+  valueBoolean: row.value_boolean === null ? null : Boolean(row.value_boolean),
+  valueDate: row.value_date ? String(row.value_date) : null,
+  valueJson: row.value_json ?? null,
+  valueNumber: row.value_number === null || row.value_number === undefined ? null : Number(row.value_number),
+  valueText: row.value_text ? String(row.value_text) : null,
+  valueTimestamp: row.value_timestamp ? String(row.value_timestamp) : null
 });
 
 export class SurveyTrackingRepository implements ISurveyTrackingRepository {
@@ -170,6 +184,33 @@ export class SurveyTrackingRepository implements ISurveyTrackingRepository {
     return result.rows.map((row: Record<string, unknown>) => mapResponse(row));
   }
 
+  public async listSurveyResponseAnswers(surveyId: string): Promise<Array<SurveyTrackingResponseAnswer & { responseId: string }>> {
+    const result = await databasePool.query(
+      `
+        select
+          a.response_id,
+          a.question_id,
+          a.question_stable_key,
+          a.value_text,
+          a.value_number,
+          a.value_boolean,
+          a.value_date,
+          a.value_timestamp,
+          a.value_json,
+          coalesce(array_agg(ac.option_id order by ac.option_id) filter (where ac.option_id is not null), '{}'::uuid[]) as option_ids
+        from answers a
+        inner join survey_responses sr on sr.id = a.response_id
+        left join answer_choices ac on ac.answer_id = a.id
+        where sr.survey_id = $1
+        group by a.id
+        order by a.created_at asc
+      `,
+      [surveyId]
+    );
+
+    return result.rows.map((row: Record<string, unknown>) => mapAnswer(row));
+  }
+
   public async getResponsePreview(surveyId: string, responseId: string) {
     const responseResult = await databasePool.query(
       `
@@ -229,20 +270,7 @@ export class SurveyTrackingRepository implements ISurveyTrackingRepository {
     );
 
     return {
-      answers: answersResult.rows.map((answerRow: Record<string, unknown>) => ({
-        optionIds: Array.isArray(answerRow.option_ids) ? answerRow.option_ids.map((value) => String(value)) : [],
-        questionId: String(answerRow.question_id),
-        questionStableKey: String(answerRow.question_stable_key),
-        valueBoolean: answerRow.value_boolean === null ? null : Boolean(answerRow.value_boolean),
-        valueDate: answerRow.value_date ? String(answerRow.value_date) : null,
-        valueJson: answerRow.value_json ?? null,
-        valueNumber:
-          answerRow.value_number === null || answerRow.value_number === undefined
-            ? null
-            : Number(answerRow.value_number),
-        valueText: answerRow.value_text ? String(answerRow.value_text) : null,
-        valueTimestamp: answerRow.value_timestamp ? String(answerRow.value_timestamp) : null
-      })),
+      answers: answersResult.rows.map((answerRow: Record<string, unknown>) => mapAnswer({ ...answerRow, response_id: responseId })),
       response: mapResponse(row),
       survey: {
         accessMode: row.access_mode as SurveyTrackingResponsePreview["survey"]["accessMode"],

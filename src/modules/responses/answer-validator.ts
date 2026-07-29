@@ -16,6 +16,7 @@ export const validateAnswerValue = (
   valueTimestamp: string | null;
 } => {
   const optionIdSet = new Set(options.map((option) => option.id));
+  const numericValue = (raw: unknown): number | null => (typeof raw === "number" && Number.isFinite(raw) ? raw : null);
 
   for (const optionId of optionIds) {
     if (!optionIdSet.has(optionId)) {
@@ -42,6 +43,14 @@ export const validateAnswerValue = (
     case "rating": {
       if (typeof value !== "number") {
         throw new AppError(ERROR_CODES.answerInvalid, "Rating answer must be a number.", 400);
+      }
+
+      const validation = question.validation as Record<string, unknown>;
+      const minimum = numericValue(validation.minimum);
+      const maximum = numericValue(validation.maximum);
+
+      if ((minimum !== null && value < minimum) || (maximum !== null && value > maximum)) {
+        throw new AppError(ERROR_CODES.answerInvalid, "Rating answer is outside the configured range.", 400);
       }
 
       return {
