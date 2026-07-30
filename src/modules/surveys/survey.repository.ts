@@ -226,7 +226,7 @@ const shiftSectionPositionsForInsert = async (
   await client.query(
     `
       update survey_sections
-      set position = position + $3,
+      set position = position + $3::int,
           updated_at = now()
       where survey_version_id = $1
         and position >= $2
@@ -237,10 +237,10 @@ const shiftSectionPositionsForInsert = async (
   await client.query(
     `
       update survey_sections
-      set position = position - ($3 - 1),
+      set position = position - ($3::int - 1),
           updated_at = now()
       where survey_version_id = $1
-        and position >= $2 + $3
+        and position >= $2::int + $3::int
     `,
     [surveyVersionId, targetPosition, SECTION_REORDER_TEMP_OFFSET]
   );
@@ -256,7 +256,7 @@ const shiftSectionPositionsForMoveUp = async (
   await client.query(
     `
       update survey_sections
-      set position = position + $5,
+      set position = position + $5::int,
           updated_at = now()
       where survey_version_id = $1
         and id <> $2
@@ -269,12 +269,12 @@ const shiftSectionPositionsForMoveUp = async (
   await client.query(
     `
       update survey_sections
-      set position = position - ($5 - 1),
+      set position = position - ($5::int - 1),
           updated_at = now()
       where survey_version_id = $1
         and id <> $2
-        and position >= $3 + $5
-        and position < $4 + $5
+        and position >= $3::int + $5::int
+        and position < $4::int + $5::int
     `,
     [surveyVersionId, sectionId, targetPosition, currentPosition, SECTION_REORDER_TEMP_OFFSET]
   );
@@ -290,7 +290,7 @@ const shiftSectionPositionsForMoveDown = async (
   await client.query(
     `
       update survey_sections
-      set position = position + $5,
+      set position = position + $5::int,
           updated_at = now()
       where survey_version_id = $1
         and id <> $2
@@ -303,14 +303,33 @@ const shiftSectionPositionsForMoveDown = async (
   await client.query(
     `
       update survey_sections
-      set position = position - ($5 + 1),
+      set position = position - ($5::int + 1),
           updated_at = now()
       where survey_version_id = $1
         and id <> $2
-        and position > $3 + $5
-        and position <= $4 + $5
+        and position > $3::int + $5::int
+        and position <= $4::int + $5::int
     `,
     [surveyVersionId, sectionId, currentPosition, targetPosition, SECTION_REORDER_TEMP_OFFSET]
+  );
+};
+
+const cleanupCalculatedScoreReferencesForQuestions = async (
+  client: DatabaseClient,
+  questionIds: string[]
+): Promise<void> => {
+  if (questionIds.length === 0) {
+    return;
+  }
+
+  await client.query("delete from survey_calculated_score_questions where question_id = any($1::uuid[])", [questionIds]);
+  await client.query(
+    `
+      delete from survey_score_follow_up_targets
+      where target_type = 'question'
+        and target_id = any($1::uuid[])
+    `,
+    [questionIds]
   );
 };
 
@@ -730,7 +749,28 @@ export class SurveyRepository implements ISurveyRepository {
   }
 
   public async deleteSection(input: DeleteSectionInput): Promise<void> {
-    await databasePool.query("delete from survey_sections where id = $1", [input.sectionId]);
+    await withTransaction(async (client) => {
+      const sectionResult = await client.query("select * from survey_sections where id = $1", [input.sectionId]);
+      const section = sectionResult.rows[0] as Record<string, unknown> | undefined;
+
+      if (!section) {
+        return;
+      }
+
+      const questionsResult = await client.query("select id from questions where section_id = $1", [input.sectionId]);
+      const questionIds = (questionsResult.rows as Array<{ id: string }>).map((row) => String(row.id));
+
+      await cleanupCalculatedScoreReferencesForQuestions(client, questionIds);
+      await client.query(
+        `
+          delete from survey_score_follow_up_targets
+          where target_type = 'section'
+            and target_id = $1
+        `,
+        [input.sectionId]
+      );
+      await client.query("delete from survey_sections where id = $1", [input.sectionId]);
+    });
   }
 
   public async reorderSections(input: ReorderSectionsInput): Promise<SurveySection[]> {
@@ -842,7 +882,25 @@ export class SurveyRepository implements ISurveyRepository {
   }
 
   public async deleteQuestion(input: DeleteQuestionInput): Promise<void> {
-    await databasePool.query("delete from questions where id = $1", [input.questionId]);
+    await withTransaction(async (client) => {
+      const questionResult = await client.query("select * from questions where id = $1", [input.questionId]);
+      const question = questionResult.rows[0] as Record<string, unknown> | undefined;
+
+      if (!question) {
+        return;
+      }
+
+      await cleanupCalculatedScoreReferencesForQuestions(client, [input.questionId]);
+      await client.query(
+        `
+          delete from survey_score_follow_up_targets
+          where target_type = 'question'
+            and target_id = $1
+        `,
+        [input.questionId]
+      );
+      await client.query("delete from questions where id = $1", [input.questionId]);
+    });
   }
 
   public async reorderQuestions(input: ReorderQuestionsInput): Promise<Question[]> {
