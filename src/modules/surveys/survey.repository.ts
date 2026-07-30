@@ -218,6 +218,102 @@ const countSectionsByVersion = async (client: DatabaseClient, surveyVersionId: s
 const clampSectionInsertPosition = (position: number, sectionCount: number) =>
   Math.min(Math.max(position, 0), sectionCount);
 
+const shiftSectionPositionsForInsert = async (
+  client: DatabaseClient,
+  surveyVersionId: string,
+  targetPosition: number
+): Promise<void> => {
+  await client.query(
+    `
+      update survey_sections
+      set position = position + $3,
+          updated_at = now()
+      where survey_version_id = $1
+        and position >= $2
+    `,
+    [surveyVersionId, targetPosition, SECTION_REORDER_TEMP_OFFSET]
+  );
+
+  await client.query(
+    `
+      update survey_sections
+      set position = position - ($3 - 1),
+          updated_at = now()
+      where survey_version_id = $1
+        and position >= $2 + $3
+    `,
+    [surveyVersionId, targetPosition, SECTION_REORDER_TEMP_OFFSET]
+  );
+};
+
+const shiftSectionPositionsForMoveUp = async (
+  client: DatabaseClient,
+  surveyVersionId: string,
+  sectionId: string,
+  targetPosition: number,
+  currentPosition: number
+): Promise<void> => {
+  await client.query(
+    `
+      update survey_sections
+      set position = position + $5,
+          updated_at = now()
+      where survey_version_id = $1
+        and id <> $2
+        and position >= $3
+        and position < $4
+    `,
+    [surveyVersionId, sectionId, targetPosition, currentPosition, SECTION_REORDER_TEMP_OFFSET]
+  );
+
+  await client.query(
+    `
+      update survey_sections
+      set position = position - ($5 - 1),
+          updated_at = now()
+      where survey_version_id = $1
+        and id <> $2
+        and position >= $3 + $5
+        and position < $4 + $5
+    `,
+    [surveyVersionId, sectionId, targetPosition, currentPosition, SECTION_REORDER_TEMP_OFFSET]
+  );
+};
+
+const shiftSectionPositionsForMoveDown = async (
+  client: DatabaseClient,
+  surveyVersionId: string,
+  sectionId: string,
+  currentPosition: number,
+  targetPosition: number
+): Promise<void> => {
+  await client.query(
+    `
+      update survey_sections
+      set position = position + $5,
+          updated_at = now()
+      where survey_version_id = $1
+        and id <> $2
+        and position > $3
+        and position <= $4
+    `,
+    [surveyVersionId, sectionId, currentPosition, targetPosition, SECTION_REORDER_TEMP_OFFSET]
+  );
+
+  await client.query(
+    `
+      update survey_sections
+      set position = position - ($5 + 1),
+          updated_at = now()
+      where survey_version_id = $1
+        and id <> $2
+        and position > $3 + $5
+        and position <= $4 + $5
+    `,
+    [surveyVersionId, sectionId, currentPosition, targetPosition, SECTION_REORDER_TEMP_OFFSET]
+  );
+};
+
 const clampSectionUpdatePosition = (position: number, sectionCount: number) =>
   Math.min(Math.max(position, 0), Math.max(sectionCount - 1, 0));
 
@@ -564,16 +660,7 @@ export class SurveyRepository implements ISurveyRepository {
       const sectionCount = await countSectionsByVersion(client, input.surveyVersionId);
       const targetPosition = clampSectionInsertPosition(input.position, sectionCount);
 
-      await client.query(
-        `
-          update survey_sections
-          set position = position + 1,
-              updated_at = now()
-          where survey_version_id = $1
-            and position >= $2
-        `,
-        [input.surveyVersionId, targetPosition]
-      );
+      await shiftSectionPositionsForInsert(client, input.surveyVersionId, targetPosition);
 
       const result = await client.query(
         `
@@ -611,30 +698,20 @@ export class SurveyRepository implements ISurveyRepository {
       const targetPosition = clampSectionUpdatePosition(input.position, sectionCount);
 
       if (targetPosition < currentPosition) {
-        await client.query(
-          `
-            update survey_sections
-            set position = position + 1,
-                updated_at = now()
-            where survey_version_id = $1
-              and id <> $2
-              and position >= $3
-              and position < $4
-          `,
-          [surveyVersionId, input.sectionId, targetPosition, currentPosition]
+        await shiftSectionPositionsForMoveUp(
+          client,
+          surveyVersionId,
+          input.sectionId,
+          targetPosition,
+          currentPosition
         );
       } else if (targetPosition > currentPosition) {
-        await client.query(
-          `
-            update survey_sections
-            set position = position - 1,
-                updated_at = now()
-            where survey_version_id = $1
-              and id <> $2
-              and position > $3
-              and position <= $4
-          `,
-          [surveyVersionId, input.sectionId, currentPosition, targetPosition]
+        await shiftSectionPositionsForMoveDown(
+          client,
+          surveyVersionId,
+          input.sectionId,
+          currentPosition,
+          targetPosition
         );
       }
 
