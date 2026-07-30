@@ -12,13 +12,22 @@ const parsePaginationNumber = (value: unknown, fallback: number): number => {
   return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
 };
 
+const normalizeOptionalDate = (value: unknown): string | null => {
+  if (value === null || value === undefined || value === "") {
+    return null;
+  }
+
+  const parsed = new Date(String(value));
+  return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
+};
+
 export const createSurvey = async (request: Request, response: Response): Promise<void> => {
   const result = await surveyService.createSurvey({
     accessMode: request.body.accessMode,
-    closesAt: request.body.closesAt ?? null,
+    closesAt: normalizeOptionalDate(request.body.closesAt),
     createdBy: request.admin!.userId,
     description: request.body.description ?? null,
-    opensAt: request.body.opensAt ?? null,
+    opensAt: normalizeOptionalDate(request.body.opensAt),
     organizationId: request.body.organizationId,
     responseLimit: request.body.responseLimit ?? null,
     settings: {
@@ -73,8 +82,8 @@ export const updateSurvey = async (request: Request, response: Response): Promis
   const survey = await surveyService.updateSurveyMetadata(
     {
       accessMode: request.body.accessMode,
-      closesAt: request.body.closesAt ?? null,
-      opensAt: request.body.opensAt ?? null,
+      closesAt: normalizeOptionalDate(request.body.closesAt),
+      opensAt: normalizeOptionalDate(request.body.opensAt),
       responseLimit: request.body.responseLimit ?? null,
       slug: request.body.slug,
       surveyId: getParam(request.params.surveyId)
