@@ -22,7 +22,11 @@ export const authenticateRespondent = async (
       );
     }
 
-    const rawSessionToken = request.cookies?.[env.respondentCookieName];
+    const headerSessionToken = request.header("X-Respondent-Session");
+    const rawSessionToken =
+      typeof headerSessionToken === "string" && headerSessionToken.trim().length > 0
+        ? headerSessionToken.trim()
+        : request.cookies?.[env.respondentCookieName];
 
     if (!rawSessionToken || typeof rawSessionToken !== "string") {
       throw new AppError(

@@ -16,12 +16,18 @@ export const getPublicSurveyBySlug = async (request: Request, response: Response
   const result = await respondentService.grantAccessByPublicSlug(String(request.params.publicSlug));
   setRespondentAccessHeaders(response);
   setRespondentSessionCookie(response, result.rawSessionToken);
-  sendSuccess(response, "Survey retrieved successfully.", result.survey);
+  sendSuccess(response, "Survey retrieved successfully.", {
+    ...result.survey,
+    respondentSessionToken: result.rawSessionToken
+  });
 };
 
 export const getInvitationSurveyByToken = async (request: Request, response: Response): Promise<void> => {
   const result = await respondentService.grantAccessByInvitationToken(String(request.params.token));
   setRespondentAccessHeaders(response);
   setRespondentSessionCookie(response, result.rawSessionToken);
-  sendSuccess(response, "Survey retrieved successfully.", result.survey);
+  sendSuccess(response, "Survey retrieved successfully.", {
+    ...result.survey,
+    respondentSessionToken: result.rawSessionToken
+  });
 };
