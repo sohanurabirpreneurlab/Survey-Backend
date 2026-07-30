@@ -72,17 +72,13 @@ const calculateAverageScore = (
     const numericScore = question ? resolveAnswerNumericScore(question, answer, options) : null;
 
     if (numericScore === null) {
-      if (score.requireAllAnswers) {
-        return {
-          calculated: false,
-          calculatedScoreId: score.id,
-          questionIdsUsed: [],
-          scoreValue: null,
-          thresholdMatched: null
-        };
-      }
-
-      continue;
+      return {
+        calculated: false,
+        calculatedScoreId: score.id,
+        questionIdsUsed: [],
+        scoreValue: null,
+        thresholdMatched: null
+      };
     }
 
     values.push(numericScore);
