@@ -11,3 +11,8 @@ export const saveAnswerValidators = [
 ];
 
 export const submitResponseValidators = [...responseIdParamValidators];
+
+export const submitResponseWithAnswersValidators = [
+  body("answers").isArray().withMessage("answers must be an array."),
+  body("answers.*.questionId").isUUID().withMessage("answers[].questionId must be a valid UUID.")
+];

@@ -45,3 +45,27 @@ export const submitResponse = async (request: Request, response: Response): Prom
     result.value
   );
 };
+
+export const submitResponseWithAnswers = async (request: Request, response: Response): Promise<void> => {
+  const answers = Array.isArray(request.body.answers)
+    ? request.body.answers.map((answer: { questionId: string; value: unknown }) => ({
+        questionId: answer.questionId,
+        value: answer.value
+      }))
+    : [];
+
+  const result = await responseService.submitResponseWithAnswers({
+    answers,
+    idempotencyKey: request.header("Idempotency-Key") ?? undefined,
+    invitationId: request.respondent!.invitationId,
+    sessionId: request.respondent!.sessionId,
+    surveyId: request.respondent!.surveyId,
+    surveyVersionId: request.respondent!.surveyVersionId
+  });
+
+  sendSuccess(
+    response,
+    result.replayed ? "Submission replayed successfully." : "Response submitted successfully.",
+    result.value
+  );
+};

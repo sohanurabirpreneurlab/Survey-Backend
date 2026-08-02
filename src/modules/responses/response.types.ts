@@ -38,6 +38,18 @@ export type ResponseScoreRecord = {
   thresholdMatched: boolean | null;
 };
 
+export type PreparedAnswerInput = {
+  optionIds: string[];
+  questionId: string;
+  questionStableKey: string;
+  scoreSnapshot: number | null;
+  valueBoolean: boolean | null;
+  valueJson: unknown;
+  valueNumber: number | null;
+  valueText: string | null;
+  valueTimestamp: string | null;
+};
+
 export type SaveAnswerInput = {
   expectedRevision: number;
   questionId: string;

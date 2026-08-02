@@ -2,7 +2,7 @@ import { AppError } from "../../common/errors/app-error";
 import { ERROR_CODES } from "../../common/errors/error-codes";
 import { databasePool } from "../../config/database";
 import type { IResponseRepository } from "./response.repository.interface";
-import type { AnswerRecord, ResponseScoreRecord, SurveyResponse } from "./response.types";
+import type { AnswerRecord, PreparedAnswerInput, ResponseScoreRecord, SurveyResponse } from "./response.types";
 
 type DatabaseClient = {
   query: (sql: string, values?: unknown[]) => Promise<{ rowCount?: number; rows: unknown[] }>;
@@ -41,6 +41,54 @@ const mapResponse = (row: Record<string, unknown>): SurveyResponse => ({
 });
 
 export class ResponseRepository implements IResponseRepository {
+  private async upsertPreparedAnswer(client: DatabaseClient, responseId: string, answer: PreparedAnswerInput): Promise<void> {
+    const answerResult = await client.query(
+      `
+        insert into answers (
+          response_id,
+          question_id,
+          question_stable_key,
+          value_text,
+          value_number,
+          value_boolean,
+          value_timestamp,
+          value_json,
+          score_snapshot
+        )
+        values ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9)
+        on conflict (response_id, question_id)
+        do update
+          set question_stable_key = excluded.question_stable_key,
+              value_text = excluded.value_text,
+              value_number = excluded.value_number,
+              value_boolean = excluded.value_boolean,
+              value_timestamp = excluded.value_timestamp,
+              value_json = excluded.value_json,
+              score_snapshot = excluded.score_snapshot,
+              updated_at = now()
+        returning *
+      `,
+      [
+        responseId,
+        answer.questionId,
+        answer.questionStableKey,
+        answer.valueText,
+        answer.valueNumber,
+        answer.valueBoolean,
+        answer.valueTimestamp,
+        JSON.stringify(answer.valueJson),
+        answer.scoreSnapshot
+      ]
+    );
+
+    const answerId = String((answerResult.rows[0] as Record<string, unknown>).id);
+    await client.query("delete from answer_choices where answer_id = $1", [answerId]);
+
+    for (const optionId of answer.optionIds) {
+      await client.query("insert into answer_choices (answer_id, option_id) values ($1, $2)", [answerId, optionId]);
+    }
+  }
+
   public async listAnswersForResponse(responseId: string): Promise<AnswerRecord[]> {
     const result = await databasePool.query(
       `
@@ -149,55 +197,7 @@ export class ResponseRepository implements IResponseRepository {
         return null;
       }
 
-      const answerResult = await client.query(
-        `
-          insert into answers (
-            response_id,
-            question_id,
-            question_stable_key,
-            value_text,
-            value_number,
-            value_boolean,
-            value_timestamp,
-            value_json,
-            score_snapshot
-          )
-          values ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9)
-          on conflict (response_id, question_id)
-          do update
-            set question_stable_key = excluded.question_stable_key,
-                value_text = excluded.value_text,
-                value_number = excluded.value_number,
-                value_boolean = excluded.value_boolean,
-                value_timestamp = excluded.value_timestamp,
-                value_json = excluded.value_json,
-                score_snapshot = excluded.score_snapshot,
-                updated_at = now()
-          returning *
-        `,
-        [
-          input.responseId,
-          input.questionId,
-          input.questionStableKey,
-          input.valueText,
-          input.valueNumber,
-          input.valueBoolean,
-          input.valueTimestamp,
-          JSON.stringify(input.valueJson),
-          input.scoreSnapshot
-        ]
-      );
-
-      const answerId = String((answerResult.rows[0] as Record<string, unknown>).id);
-
-      await client.query("delete from answer_choices where answer_id = $1", [answerId]);
-
-      for (const optionId of input.optionIds) {
-        await client.query(
-          "insert into answer_choices (answer_id, option_id) values ($1, $2)",
-          [answerId, optionId]
-        );
-      }
+      await this.upsertPreparedAnswer(client, input.responseId, input);
 
       const updatedResponseResult = await client.query(
         `
@@ -219,7 +219,9 @@ export class ResponseRepository implements IResponseRepository {
     responseId: string,
     sessionId: string,
     input?: {
+      preparedAnswers?: PreparedAnswerInput[];
       hiddenQuestionIds?: string[];
+      replaceQuestionIds?: string[];
       responseScores?: ResponseScoreRecord[];
       visibleRequiredQuestionIds?: string[];
     }
@@ -305,7 +307,52 @@ export class ResponseRepository implements IResponseRepository {
         }
       }
 
+      const replaceQuestionIds = input?.replaceQuestionIds ?? [];
+
+      if (replaceQuestionIds.length > 0) {
+        await client.query(
+          `
+            delete from answer_choices
+            where answer_id in (
+              select id
+              from answers
+              where response_id = $1
+                and question_id = any($2::uuid[])
+                and not (question_id = any($3::uuid[]))
+            )
+          `,
+          [response.id, replaceQuestionIds, (input?.preparedAnswers ?? []).map((answer) => answer.questionId)]
+        );
+
+        await client.query(
+          `
+            delete from answers
+            where response_id = $1
+              and question_id = any($2::uuid[])
+              and not (question_id = any($3::uuid[]))
+          `,
+          [response.id, replaceQuestionIds, (input?.preparedAnswers ?? []).map((answer) => answer.questionId)]
+        );
+      }
+
+      for (const preparedAnswer of input?.preparedAnswers ?? []) {
+        await this.upsertPreparedAnswer(client, response.id, preparedAnswer);
+      }
+
       if ((input?.hiddenQuestionIds ?? []).length > 0) {
+        await client.query(
+          `
+            delete from answer_choices
+            where answer_id in (
+              select id
+              from answers
+              where response_id = $1
+                and question_id = any($2::uuid[])
+            )
+          `,
+          [response.id, input?.hiddenQuestionIds ?? []]
+        );
+
         await client.query(
           `
             delete from answers

@@ -1,5 +1,5 @@
 import type { SurveyResponse } from "./response.types";
-import type { AnswerRecord, ResponseScoreRecord } from "./response.types";
+import type { AnswerRecord, PreparedAnswerInput, ResponseScoreRecord } from "./response.types";
 
 export interface IResponseRepository {
   findCurrentInProgress(sessionId: string): Promise<SurveyResponse | null>;
@@ -28,7 +28,9 @@ export interface IResponseRepository {
     responseId: string,
     sessionId: string,
     input?: {
+      preparedAnswers?: PreparedAnswerInput[];
       hiddenQuestionIds?: string[];
+      replaceQuestionIds?: string[];
       responseScores?: ResponseScoreRecord[];
       visibleRequiredQuestionIds?: string[];
     }
