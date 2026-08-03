@@ -533,7 +533,16 @@ export class SurveyRepository implements ISurveyRepository {
 
     const [sectionsResult, questionsResult, optionsResult, calculatedScores] = await Promise.all([
       databasePool.query("select * from survey_sections where survey_version_id = $1 order by position asc", [versionId]),
-      databasePool.query("select * from questions where survey_version_id = $1 order by section_id, position asc", [versionId]),
+      databasePool.query(
+        `
+          select q.*
+          from questions q
+          inner join survey_sections s on s.id = q.section_id
+          where q.survey_version_id = $1
+          order by s.position asc, q.position asc
+        `,
+        [versionId]
+      ),
       databasePool.query(
         `
           select qo.*
