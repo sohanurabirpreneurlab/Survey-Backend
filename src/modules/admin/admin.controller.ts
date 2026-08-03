@@ -131,6 +131,23 @@ export const createOrganization = async (request: Request, response: Response): 
   sendSuccess(response, "Organization created successfully.", result, 201);
 };
 
+export const updateOrganization = async (request: Request, response: Response): Promise<void> => {
+  const result = await adminService.updateOrganization({
+    actorUserId: request.admin!.userId,
+    name: String(request.body.name),
+    organizationId: String(request.params.organizationId)
+  });
+  sendSuccess(response, "Organization updated successfully.", result);
+};
+
+export const deleteOrganization = async (request: Request, response: Response): Promise<void> => {
+  await adminService.deleteOrganization({
+    actorUserId: request.admin!.userId,
+    organizationId: String(request.params.organizationId)
+  });
+  sendSuccess(response, "Organization deleted successfully.", null);
+};
+
 export const getOrganizationDetail = async (request: Request, response: Response): Promise<void> => {
   const detail = await adminService.getOrganizationDetail(String(request.params.organizationId));
   sendSuccess(response, "Admin organization detail retrieved successfully.", detail);

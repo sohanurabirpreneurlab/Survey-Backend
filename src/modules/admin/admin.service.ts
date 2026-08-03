@@ -86,6 +86,18 @@ export class AdminService {
     return this.adminRepository.createOrganization(input);
   }
 
+  public async updateOrganization(input: {
+    actorUserId: string;
+    name: string;
+    organizationId: string;
+  }) {
+    return this.adminRepository.updateOrganization(input);
+  }
+
+  public async deleteOrganization(input: { actorUserId: string; organizationId: string }) {
+    return this.adminRepository.deleteOrganization(input);
+  }
+
   public async getOrganizationDetail(organizationId: string) {
     const organization = await this.adminRepository.getOrganizationById(organizationId);
 

@@ -6,6 +6,7 @@ import { validateRequest } from "../../common/middleware/validate-request";
 import {
   approveUser,
   createOrganization,
+  deleteOrganization,
   getDashboardSummary,
   getOrganizationDetail,
   getUserDetail,
@@ -16,12 +17,14 @@ import {
   rejectUser,
   suspendUser
   ,
+  updateOrganization,
   updateUserProfile,
   updateUserRole
 } from "./admin.controller";
 import {
   approveUserValidators,
   createOrganizationValidators,
+  deleteOrganizationValidators,
   listAuditLogsValidators,
   listOrganizationsValidators,
   listUsersValidators,
@@ -29,6 +32,7 @@ import {
   reactivateUserValidators,
   rejectUserValidators,
   suspendUserValidators,
+  updateOrganizationValidators,
   updateUserProfileValidators,
   updateUserRoleValidators,
   userIdParamValidator
@@ -53,6 +57,18 @@ adminRouter.post(
 adminRouter.patch("/users/:userId/profile", updateUserProfileValidators, validateRequest, asyncHandler(updateUserProfile));
 adminRouter.patch("/users/:userId/role", updateUserRoleValidators, validateRequest, asyncHandler(updateUserRole));
 adminRouter.post("/organizations", createOrganizationValidators, validateRequest, asyncHandler(createOrganization));
+adminRouter.patch(
+  "/organizations/:organizationId",
+  updateOrganizationValidators,
+  validateRequest,
+  asyncHandler(updateOrganization)
+);
+adminRouter.delete(
+  "/organizations/:organizationId",
+  deleteOrganizationValidators,
+  validateRequest,
+  asyncHandler(deleteOrganization)
+);
 adminRouter.get(
   "/organizations",
   listOrganizationsValidators,

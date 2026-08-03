@@ -14,6 +14,7 @@ import type {
   AuditLogRecord,
   AuditLogsResult,
   ApproveUserResult,
+  UpdateAdminOrganizationResult,
   UpdateAdminUserProfileResult,
   UpdateUserRoleResult
 } from "./admin.types";
@@ -53,6 +54,8 @@ const slugify = (value: string) =>
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
     .slice(0, 64);
+
+const normalizeOrganizationName = (value: string) => value.trim().toLowerCase();
 
 const buildAdminUserQueryFragments = async () => {
   const hasProfileOrganization = await hasColumn("user_profiles", "organization");
@@ -102,6 +105,39 @@ const mapAdminUserSummary = (row: Record<string, unknown>): AdminUserSummary => 
 });
 
 export class AdminRepository {
+  private async ensureOrganizationNameAvailable(
+    client: Pick<DatabaseClient, "query">,
+    name: string,
+    excludeOrganizationId?: string
+  ) {
+    const normalizedName = normalizeOrganizationName(name);
+    const params: unknown[] = [normalizedName];
+    let sql = `
+      select id
+      from organizations
+      where deleted_at is null
+        and lower(name) = $1
+    `;
+
+    if (excludeOrganizationId) {
+      params.push(excludeOrganizationId);
+      sql += ` and id <> $2`;
+    }
+
+    sql += " limit 1";
+    const existingOrganization = await client.query(sql, params);
+
+    if (existingOrganization.rowCount) {
+      throw new AppError(
+        ERROR_CODES.databaseConflict,
+        "An organization with this name already exists.",
+        409
+      );
+    }
+
+    return normalizedName;
+  }
+
   public async getDashboardSummary(): Promise<AdminDashboardSummary> {
     const fragments = await buildAdminUserQueryFragments();
     const [userCounts, organizationCounts, surveyCounts, recentPendingUsers, recentApprovals, recentActivity] =
@@ -401,7 +437,7 @@ export class AdminRepository {
 
     if (input.query?.trim()) {
       params.push(`%${input.query.trim().toLowerCase()}%`);
-      filters.push(`(lower(o.name) like $${params.length} or lower(owner_user.email) like $${params.length})`);
+      filters.push(`lower(o.name) like $${params.length}`);
     }
 
     params.push(input.limit);
@@ -417,18 +453,13 @@ export class AdminRepository {
           o.name,
           o.created_at,
           o.updated_at,
-          owner_user.email as owner_email,
-          owner_profile.full_name as owner_name,
           count(distinct om.user_id)::int as member_count,
           count(distinct s.id)::int as survey_count
         from organizations o
         left join organization_members om on om.organization_id = o.id
-        left join organization_members owner_member on owner_member.organization_id = o.id and owner_member.role = 'owner'
-        left join app_users owner_user on owner_user.id = owner_member.user_id
-        left join user_profiles owner_profile on owner_profile.user_id = owner_member.user_id
         left join surveys s on s.organization_id = o.id and s.deleted_at is null
         ${whereClause}
-        group by o.id, owner_user.email, owner_profile.full_name
+        group by o.id
         order by o.created_at desc
         limit $${limitIndex} offset $${offsetIndex}
       `,
@@ -448,8 +479,6 @@ export class AdminRepository {
         memberCount: Number((row as Record<string, unknown>).member_count ?? 0),
         name: String((row as Record<string, unknown>).name),
         organizationId: String((row as Record<string, unknown>).organization_id),
-        ownerEmail: (row as Record<string, unknown>).owner_email ? String((row as Record<string, unknown>).owner_email) : null,
-        ownerName: (row as Record<string, unknown>).owner_name ? String((row as Record<string, unknown>).owner_name) : null,
         surveyCount: Number((row as Record<string, unknown>).survey_count ?? 0),
         updatedAt: String((row as Record<string, unknown>).updated_at)
       })),
@@ -544,7 +573,7 @@ export class AdminRepository {
     userId: string;
   }): Promise<ApproveUserResult> {
     const hasProfileOrganization = await hasColumn("user_profiles", "organization");
-    const organizationName = input.organizationName.trim();
+    const organizationName = normalizeOrganizationName(input.organizationName);
 
     if (!hasProfileOrganization && !organizationName) {
       throw new AppError(ERROR_CODES.organizationNameInvalid, "Enter a valid organization name.", 400);
@@ -610,6 +639,7 @@ export class AdminRepository {
 
         organization = organizationResult.rows[0] as Record<string, unknown>;
       } else {
+        await this.ensureOrganizationNameAvailable(client, organizationName);
         const baseSlug = slugify(organizationName);
         let organizationSlug = baseSlug || `organization-${String(input.userId).slice(0, 8)}`;
         const existingOrgResult = await client.query(
@@ -973,13 +1003,14 @@ export class AdminRepository {
     actorUserId: string;
     name: string;
   }): Promise<CreateAdminOrganizationResult> {
-    const organizationName = input.name.trim();
+    const organizationName = normalizeOrganizationName(input.name);
 
     if (!organizationName) {
       throw new AppError(ERROR_CODES.organizationNameInvalid, "Enter a valid organization name.", 400);
     }
 
     return withTransaction(async (client) => {
+      await this.ensureOrganizationNameAvailable(client, organizationName);
       let organizationSlug = slugify(organizationName) || `organization-${Date.now()}`;
       const existingOrgResult = await client.query(
         `select 1 from organizations where slug = $1 and deleted_at is null limit 1`,
@@ -1018,6 +1049,161 @@ export class AdminRepository {
           slug: String(organization.slug)
         }
       };
+    });
+  }
+
+  public async updateOrganization(input: {
+    actorUserId: string;
+    name: string;
+    organizationId: string;
+  }): Promise<UpdateAdminOrganizationResult> {
+    const organizationName = normalizeOrganizationName(input.name);
+
+    if (!organizationName) {
+      throw new AppError(ERROR_CODES.organizationNameInvalid, "Enter a valid organization name.", 400);
+    }
+
+    return withTransaction(async (client) => {
+      const organizationLookup = await client.query(
+        `
+          select id
+          from organizations
+          where id = $1
+            and deleted_at is null
+          limit 1
+        `,
+        [input.organizationId]
+      );
+
+      if (!organizationLookup.rowCount) {
+        throw new AppError(ERROR_CODES.organizationNotFound, "Organization was not found.", 404);
+      }
+
+      await this.ensureOrganizationNameAvailable(client, organizationName, input.organizationId);
+
+      const nextSlug = slugify(organizationName) || `organization-${String(input.organizationId).slice(0, 8)}`;
+      const existingSlug = await client.query(
+        `
+          select 1
+          from organizations
+          where slug = $1
+            and deleted_at is null
+            and id <> $2
+          limit 1
+        `,
+        [nextSlug, input.organizationId]
+      );
+
+      const resolvedSlug = existingSlug.rowCount
+        ? `${nextSlug}-${Math.random().toString(36).slice(2, 8)}`
+        : nextSlug;
+
+      const updateResult = await client.query(
+        `
+          update organizations
+          set name = $2,
+              slug = $3,
+              updated_at = now()
+          where id = $1
+          returning id, name, slug
+        `,
+        [input.organizationId, organizationName, resolvedSlug]
+      );
+
+      const organization = updateResult.rows[0] as Record<string, unknown>;
+
+      await this.insertAuditLog(client, {
+        action: "ORGANIZATION_UPDATED",
+        actorUserId: input.actorUserId,
+        metadata: { name: organizationName, slug: resolvedSlug },
+        result: "success",
+        targetId: input.organizationId,
+        targetLabel: String(organization.name),
+        targetType: "organization"
+      });
+
+      return {
+        organization: {
+          id: String(organization.id),
+          name: String(organization.name),
+          slug: String(organization.slug)
+        }
+      };
+    });
+  }
+
+  public async deleteOrganization(input: {
+    actorUserId: string;
+    organizationId: string;
+  }): Promise<void> {
+    await withTransaction(async (client) => {
+      const organizationLookup = await client.query(
+        `
+          select id, name
+          from organizations
+          where id = $1
+            and deleted_at is null
+          limit 1
+        `,
+        [input.organizationId]
+      );
+
+      if (!organizationLookup.rowCount) {
+        throw new AppError(ERROR_CODES.organizationNotFound, "Organization was not found.", 404);
+      }
+
+      const [memberCountResult, surveyCountResult] = await Promise.all([
+        client.query(
+          `
+            select count(*)::int as total
+            from organization_members
+            where organization_id = $1
+          `,
+          [input.organizationId]
+        ),
+        client.query(
+          `
+            select count(*)::int as total
+            from surveys
+            where organization_id = $1
+              and deleted_at is null
+          `,
+          [input.organizationId]
+        )
+      ]);
+
+      const memberCount = Number((memberCountResult.rows[0] as Record<string, unknown>).total ?? 0);
+      const surveyCount = Number((surveyCountResult.rows[0] as Record<string, unknown>).total ?? 0);
+
+      if (memberCount > 0 || surveyCount > 0) {
+        throw new AppError(
+          ERROR_CODES.databaseConflict,
+          "Only empty organizations can be deleted.",
+          409
+        );
+      }
+
+      await client.query(
+        `
+          update organizations
+          set deleted_at = now(),
+              updated_at = now()
+          where id = $1
+        `,
+        [input.organizationId]
+      );
+
+      const organization = organizationLookup.rows[0] as Record<string, unknown>;
+
+      await this.insertAuditLog(client, {
+        action: "ORGANIZATION_DELETED",
+        actorUserId: input.actorUserId,
+        metadata: {},
+        result: "success",
+        targetId: input.organizationId,
+        targetLabel: String(organization.name),
+        targetType: "organization"
+      });
     });
   }
 

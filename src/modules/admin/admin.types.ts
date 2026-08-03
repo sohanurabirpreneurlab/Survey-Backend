@@ -70,8 +70,6 @@ export type AdminOrganizationSummary = {
   memberCount: number;
   name: string;
   organizationId: string;
-  ownerEmail: string | null;
-  ownerName: string | null;
   surveyCount: number;
   updatedAt: string;
 };
@@ -140,6 +138,14 @@ export type UpdateAdminUserProfileResult = {
 };
 
 export type CreateAdminOrganizationResult = {
+  organization: {
+    id: string;
+    name: string;
+    slug: string;
+  };
+};
+
+export type UpdateAdminOrganizationResult = {
   organization: {
     id: string;
     name: string;

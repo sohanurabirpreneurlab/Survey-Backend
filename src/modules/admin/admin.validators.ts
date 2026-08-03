@@ -76,6 +76,19 @@ export const createOrganizationValidators = [
     .withMessage("name must be between 2 and 120 characters.")
 ];
 
+export const updateOrganizationValidators = [
+  ...organizationIdParamValidator,
+  body("name")
+    .isString()
+    .trim()
+    .notEmpty()
+    .withMessage("name is required.")
+    .isLength({ min: 2, max: 120 })
+    .withMessage("name must be between 2 and 120 characters.")
+];
+
+export const deleteOrganizationValidators = [...organizationIdParamValidator];
+
 export const listAuditLogsValidators = [
   query("action").optional().isString().withMessage("action must be a string."),
   query("targetType").optional().isString().withMessage("targetType must be a string."),
