@@ -31,6 +31,7 @@ export const createSurveyValidators = [
   body("slug").isString().trim().notEmpty().withMessage("slug is required."),
   body("title").isString().trim().notEmpty().withMessage("title is required."),
   body("description").optional({ nullable: true }).isString().withMessage("description must be a string."),
+  body("settings").optional().isObject().withMessage("settings must be an object."),
   body("accessMode")
     .isIn(["public", "invite_only", "authenticated", "organization_only"])
     .withMessage("accessMode is invalid."),
@@ -61,6 +62,7 @@ export const updateDraftValidators = [
   ...surveyIdParamValidator,
   body("title").isString().trim().notEmpty().withMessage("title is required."),
   body("description").optional({ nullable: true }).isString().withMessage("description must be a string."),
+  body("settings").optional().isObject().withMessage("settings must be an object."),
   body("changeSummary").optional({ nullable: true }).isString().withMessage("changeSummary must be a string."),
   body("settings").isObject().withMessage("settings must be an object.")
 ];
@@ -147,7 +149,11 @@ export const updateOptionValidators = [
   ...optionIdParamValidator,
   body("label").isString().trim().notEmpty().withMessage("label is required."),
   body("value").isString().trim().notEmpty().withMessage("value is required."),
-  body("position").isInt({ min: 0 }).withMessage("position must be zero or greater.")
+  body("position").isInt({ min: 0 }).withMessage("position must be zero or greater."),
+  body("scoreValue")
+    .optional({ nullable: true })
+    .isFloat({ min: 0 })
+    .withMessage("scoreValue must be zero or greater, or null.")
 ];
 
 export const bulkUpdateOptionScoresValidators = [
@@ -155,7 +161,10 @@ export const bulkUpdateOptionScoresValidators = [
   ...questionIdParamValidator,
   body("options").isArray({ min: 1 }).withMessage("options must be a non-empty array."),
   body("options.*.optionId").isUUID().withMessage("optionId must be a valid UUID."),
-  body("options.*.scoreValue").optional({ nullable: true }).isNumeric().withMessage("scoreValue must be numeric or null.")
+  body("options.*.scoreValue")
+    .optional({ nullable: true })
+    .isFloat({ min: 0 })
+    .withMessage("scoreValue must be zero or greater, or null.")
 ];
 
 export const deleteOptionValidators = [...surveyIdParamValidator, ...questionIdParamValidator, ...optionIdParamValidator];

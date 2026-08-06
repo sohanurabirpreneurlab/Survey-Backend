@@ -57,6 +57,7 @@ export type PublicSurvey = {
     title: string;
     description: string | null;
     position: number;
+    settings: Record<string, unknown>;
   }>;
   questions: PublicSurveyQuestion[];
   options: Array<{

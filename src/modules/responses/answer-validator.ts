@@ -78,34 +78,71 @@ export const validateAnswerValue = (
     }
     case "single_choice":
     case "vote": {
-      const normalizedOptionIds =
-        typeof value === "string" ? [value] : Array.isArray(value) ? value.map(String) : optionIds;
+      const structuredValue = value && typeof value === "object" && !Array.isArray(value)
+        ? value as { optionId?: unknown; otherText?: unknown }
+        : null;
+      const normalizedOptionIds = typeof value === "string"
+        ? [value]
+        : structuredValue && typeof structuredValue.optionId === "string"
+          ? [structuredValue.optionId]
+          : Array.isArray(value) ? value.map(String) : optionIds;
 
       if (normalizedOptionIds.length !== 1) {
         throw new AppError(ERROR_CODES.answerInvalid, "Exactly one option must be selected.", 400);
       }
 
+      const selectedOption = options.find((option) => option.id === normalizedOptionIds[0]);
+      if (!selectedOption) {
+        throw new AppError(ERROR_CODES.optionNotFound, "Option does not belong to the question.", 400);
+      }
+
+      const otherText = typeof structuredValue?.otherText === "string" ? structuredValue.otherText.trim() : "";
+      if (selectedOption.settings.isOther === true && otherText.length === 0) {
+        throw new AppError(ERROR_CODES.answerInvalid, "Please describe the Other option.", 400);
+      }
+
       return {
         optionIds: normalizedOptionIds,
         valueBoolean: null,
-        valueJson: null,
+        valueJson: selectedOption.settings.isOther === true ? { otherText } : null,
         valueNumber: null,
         valueText: null,
         valueTimestamp: null
       };
     }
     case "multiple_choice": {
-      const normalizedOptionIds =
-        Array.isArray(value) ? value.map(String) : optionIds;
+      const structuredValue = value && typeof value === "object" && !Array.isArray(value)
+        ? value as { optionIds?: unknown; otherText?: unknown }
+        : null;
+      const normalizedOptionIds = Array.isArray(value)
+        ? value.map(String)
+        : structuredValue && Array.isArray(structuredValue.optionIds)
+          ? structuredValue.optionIds.map(String)
+          : optionIds;
 
       if (normalizedOptionIds.length === 0) {
         throw new AppError(ERROR_CODES.answerInvalid, "At least one option must be selected.", 400);
       }
 
+      for (const selectedOptionId of normalizedOptionIds) {
+        if (!optionIdSet.has(selectedOptionId)) {
+          throw new AppError(ERROR_CODES.optionNotFound, "Option does not belong to the question.", 400);
+        }
+      }
+
+      const selectedOtherOption = options.find(
+        (option) => normalizedOptionIds.includes(option.id) && option.settings.isOther === true
+      );
+      const otherText = typeof structuredValue?.otherText === "string" ? structuredValue.otherText.trim() : "";
+
+      if (selectedOtherOption && otherText.length === 0) {
+        throw new AppError(ERROR_CODES.answerInvalid, "Please describe the Other option.", 400);
+      }
+
       return {
         optionIds: normalizedOptionIds,
         valueBoolean: null,
-        valueJson: null,
+        valueJson: selectedOtherOption ? { otherText } : null,
         valueNumber: null,
         valueText: null,
         valueTimestamp: null

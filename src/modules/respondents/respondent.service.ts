@@ -179,6 +179,7 @@ export class RespondentService {
         description: section.description,
         id: section.id,
         position: section.position,
+        settings: section.settings,
         stableKey: section.stableKey,
         title: section.title
       })),

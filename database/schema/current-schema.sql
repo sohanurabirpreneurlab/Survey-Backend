@@ -161,6 +161,7 @@ create table public.survey_sections (
   title text not null,
   description text null,
   position integer not null check (position >= 0),
+  settings jsonb not null default '{}'::jsonb,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   constraint survey_sections_stable_key_unique unique (survey_version_id, stable_key),
@@ -386,14 +387,16 @@ begin
     stable_key,
     title,
     description,
-    position
+    position,
+    settings
   )
   select
     v_new_version_id,
     stable_key,
     title,
     description,
-    position
+    position,
+    settings
   from public.survey_sections
   where survey_version_id = v_published_version_id;
 

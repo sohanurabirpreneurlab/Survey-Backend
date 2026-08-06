@@ -94,6 +94,7 @@ export type SurveySection = {
   title: string;
   description: string | null;
   position: number;
+  settings: Record<string, unknown>;
   createdAt: string;
   updatedAt: string;
 };
@@ -284,6 +285,7 @@ export type UpdateSurveyLifecycleInput = {
 export type CreateSectionInput = {
   description: string | null;
   position: number;
+  settings: Record<string, unknown>;
   surveyVersionId: string;
   title: string;
 };
@@ -292,6 +294,7 @@ export type UpdateSectionInput = {
   description: string | null;
   position: number;
   sectionId: string;
+  settings: Record<string, unknown>;
   title: string;
 };
 

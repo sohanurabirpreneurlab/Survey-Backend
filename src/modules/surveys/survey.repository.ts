@@ -90,6 +90,7 @@ const mapSection = (row: Record<string, unknown>): SurveySection => ({
   description: row.description ? String(row.description) : null,
   id: String(row.id),
   position: Number(row.position),
+  settings: (row.settings as Record<string, unknown>) ?? {},
   stableKey: String(row.stable_key),
   surveyVersionId: String(row.survey_version_id),
   title: String(row.title),
@@ -574,7 +575,23 @@ export class SurveyRepository implements ISurveyRepository {
     );
 
     const row = result.rows[0] as Record<string, unknown>;
-    return this.findVersionById(input.surveyId, String(row.draft_version_id)) as Promise<SurveyVersion>;
+    const draftVersionId = String(row.draft_version_id);
+
+    await databasePool.query(
+      `
+        update survey_sections new_section
+        set settings = published_section.settings
+        from surveys survey
+        inner join survey_sections published_section
+          on published_section.survey_version_id = survey.published_version_id
+         and published_section.stable_key = new_section.stable_key
+        where survey.id = $1
+          and new_section.survey_version_id = $2
+      `,
+      [input.surveyId, draftVersionId]
+    );
+
+    return this.findVersionById(input.surveyId, draftVersionId) as Promise<SurveyVersion>;
   }
 
   public async publishDraft(input: PublishDraftInput): Promise<SurveyVersion> {
@@ -692,8 +709,8 @@ export class SurveyRepository implements ISurveyRepository {
 
       const result = await client.query(
         `
-          insert into survey_sections (survey_version_id, stable_key, title, description, position)
-          values ($1, $2, $3, $4, $5)
+          insert into survey_sections (survey_version_id, stable_key, title, description, position, settings)
+          values ($1, $2, $3, $4, $5, $6)
           returning *
         `,
         [
@@ -701,7 +718,8 @@ export class SurveyRepository implements ISurveyRepository {
           createStableKey("sec"),
           input.title,
           input.description,
-          targetPosition
+          targetPosition,
+          JSON.stringify(input.settings)
         ]
       );
 
@@ -746,11 +764,11 @@ export class SurveyRepository implements ISurveyRepository {
       const result = await client.query(
         `
           update survey_sections
-          set title = $2, description = $3, position = $4, updated_at = now()
+          set title = $2, description = $3, position = $4, settings = $5, updated_at = now()
           where id = $1
           returning *
         `,
-        [input.sectionId, input.title, input.description, targetPosition]
+        [input.sectionId, input.title, input.description, targetPosition, JSON.stringify(input.settings)]
       );
 
       return mapSection(result.rows[0] as Record<string, unknown>);

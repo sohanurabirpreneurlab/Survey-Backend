@@ -171,6 +171,7 @@ export const createSection = async (request: Request, response: Response): Promi
     {
       description: request.body.description ?? null,
       position: Number(request.body.position),
+      settings: request.body.settings ?? {},
       surveyVersionId: "",
       title: request.body.title
     },
@@ -186,6 +187,7 @@ export const updateSection = async (request: Request, response: Response): Promi
       description: request.body.description ?? null,
       position: Number(request.body.position),
       sectionId: getParam(request.params.sectionId),
+      settings: request.body.settings ?? {},
       title: request.body.title
     },
     getParam(request.params.surveyId),
