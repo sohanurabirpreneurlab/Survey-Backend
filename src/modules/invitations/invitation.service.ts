@@ -159,26 +159,29 @@ export class InvitationService {
       throw new AppError(ERROR_CODES.invitationSendFailed, "The invitation email could not be recovered.", 500);
     }
 
-    const rawToken = createSecureToken();
-    const rotatedInvitation = await this.invitationRepository.rotateInvitationToken({
-      invitationId,
-      tokenHash: hashToken(rawToken),
-      updatedBy: userId
+    const issuedAccess = await this.issueInvitationAccessLink({
+      createdBy: userId,
+      expiresAt: invitation.expiresAt,
+      maxResponses: invitation.maxResponses,
+      metadata: invitation.metadata,
+      recipientEmail: decryptEmail(invitation.recipientEmailCiphertext),
+      reuseExistingInvitation: true,
+      surveyId: invitation.surveyId,
+      surveyVersionId: invitation.surveyVersionId
     });
 
     const delivery = await this.invitationRepository.createEmailDelivery({
-      invitationId: rotatedInvitation.id,
+      invitationId: invitation.id,
       provider: "brevo",
       status: "pending"
     });
 
     try {
-      const recipientEmail = decryptEmail(invitation.recipientEmailCiphertext);
       const publishedVersion = await this.requirePublishedVersion(survey.id, survey.slug);
       const sendResult = await this.emailProvider.sendInvitation({
-        expiresAt: rotatedInvitation.expiresAt,
-        invitationUrl: `${env.appBaseUrl}/i/${rawToken}`,
-        recipientEmail,
+        expiresAt: invitation.expiresAt,
+        invitationUrl: issuedAccess.invitationUrl,
+        recipientEmail: issuedAccess.recipientEmail,
         surveyDescription: publishedVersion.description,
         surveyTitle: publishedVersion.title
       });
@@ -190,7 +193,7 @@ export class InvitationService {
       });
 
       const sentInvitation = await this.invitationRepository.updateInvitationStatus(
-        rotatedInvitation.id,
+        invitation.id,
         "sent"
       );
 
@@ -205,8 +208,95 @@ export class InvitationService {
       });
       throw new AppError(ERROR_CODES.invitationSendFailed, "The invitation email could not be resent.", 502);
     }
+  }
 
-    return this.toListItem(rotatedInvitation);
+  public async issueInvitationAccessLink(input: {
+    createdBy: string;
+    expiresAt: string | null;
+    maxResponses: number;
+    metadata: Record<string, unknown>;
+    recipientEmail: string;
+    reuseExistingInvitation: boolean;
+    surveyId: string;
+    surveyVersionId: string;
+  }): Promise<{
+    invitation: SurveyInvitation;
+    invitationUrl: string;
+    recipientEmail: string;
+  }> {
+    const recipientEmail = normalizeInvitationEmail(input.recipientEmail);
+    const recipientEmailHash = protectEmailForLookup(recipientEmail);
+    const rawToken = createSecureToken();
+    const tokenHash = hashToken(rawToken);
+
+    if (!input.reuseExistingInvitation) {
+      const existingInvitation = await this.invitationRepository.findActiveInvitationByEmailHash(
+        input.surveyId,
+        recipientEmailHash
+      );
+
+      if (existingInvitation) {
+        throw new AppError(
+          ERROR_CODES.invitationEmailAlreadyExists,
+          "An active invitation already exists for this email.",
+          409
+        );
+      }
+
+      const invitation = await this.invitationRepository.createInvitation({
+        createdBy: input.createdBy,
+        expiresAt: input.expiresAt,
+        maxResponses: input.maxResponses,
+        metadata: input.metadata,
+        recipientEmailCiphertext: encryptEmail(recipientEmail),
+        recipientEmailHash,
+        surveyId: input.surveyId,
+        surveyVersionId: input.surveyVersionId,
+        tokenHash
+      });
+
+      return {
+        invitation,
+        invitationUrl: `${env.appBaseUrl}/i/${rawToken}`,
+        recipientEmail
+      };
+    }
+
+    const ensuredInvitation = await this.invitationRepository.ensureInvitationWithAccessToken({
+      createdBy: input.createdBy,
+      expiresAt: input.expiresAt,
+      maxResponses: input.maxResponses,
+      metadata: input.metadata,
+      recipientEmailCiphertext: encryptEmail(recipientEmail),
+      recipientEmailHash,
+      surveyId: input.surveyId,
+      surveyVersionId: input.surveyVersionId,
+      tokenHash
+    });
+
+    if (!ensuredInvitation.created) {
+      await this.invitationRepository.createInvitationAccessToken({
+        expiresAt: ensuredInvitation.invitation.expiresAt,
+        invitationId: ensuredInvitation.invitation.id,
+        tokenHash
+      });
+    }
+
+    return {
+      invitation: ensuredInvitation.invitation,
+      invitationUrl: `${env.appBaseUrl}/i/${rawToken}`,
+      recipientEmail
+    };
+  }
+
+  public async hasSubmittedInvitationResponse(input: {
+    recipientEmail: string;
+    surveyId: string;
+  }): Promise<boolean> {
+    return this.invitationRepository.hasSubmittedResponse(
+      input.surveyId,
+      protectEmailForLookup(normalizeInvitationEmail(input.recipientEmail))
+    );
   }
 
   private async requireManageableSurvey(surveyId: string, userId: string) {
@@ -248,88 +338,88 @@ export class InvitationService {
     recipientEmail: string;
     surveyId: string;
   }): Promise<{ failure: (InvitationFailure & { code: string }) | null; invitation: InvitationListItem }> {
-    const recipientEmail = normalizeInvitationEmail(input.recipientEmail);
-    const recipientEmailHash = protectEmailForLookup(recipientEmail);
-    const existingInvitation = await this.invitationRepository.findActiveInvitationByEmailHash(
-      input.surveyId,
-      recipientEmailHash
-    );
-
-    if (existingInvitation) {
-      return {
-        failure: {
-          code: ERROR_CODES.invitationEmailAlreadyExists,
-          email: recipientEmail,
-          message: "An active invitation already exists for this email."
-        },
-        invitation: this.toListItem(existingInvitation)
-      };
-    }
-
-    const rawToken = createSecureToken();
-    const invitation = await this.invitationRepository.createInvitation({
-      createdBy: input.createdBy,
-      expiresAt: input.expiresAt,
-      maxResponses: input.maxResponses,
-      metadata: {},
-      recipientEmailCiphertext: encryptEmail(recipientEmail),
-      recipientEmailHash,
-      surveyId: input.surveyId,
-      surveyVersionId: input.publishedVersionId,
-      tokenHash: hashToken(rawToken)
-    });
-    const delivery = await this.invitationRepository.createEmailDelivery({
-      invitationId: invitation.id,
-      provider: "brevo",
-      status: "pending"
-    });
-
     try {
-      const sendResult = await this.emailProvider.sendInvitation({
+      const issuedAccess = await this.issueInvitationAccessLink({
+        createdBy: input.createdBy,
         expiresAt: input.expiresAt,
-        invitationUrl: `${env.appBaseUrl}/i/${rawToken}`,
-        recipientEmail,
-        surveyDescription: input.publishedVersionDescription,
-        surveyTitle: input.publishedVersionTitle
+        maxResponses: input.maxResponses,
+        metadata: {},
+        recipientEmail: input.recipientEmail,
+        reuseExistingInvitation: false,
+        surveyId: input.surveyId,
+        surveyVersionId: input.publishedVersionId
+      });
+      const delivery = await this.invitationRepository.createEmailDelivery({
+        invitationId: issuedAccess.invitation.id,
+        provider: "brevo",
+        status: "pending"
       });
 
-      await this.invitationRepository.updateEmailDeliveryStatus({
-        deliveryId: delivery.id,
-        providerMessageId: sendResult.providerMessageId,
-        status: "sent"
-      });
+      try {
+        const sendResult = await this.emailProvider.sendInvitation({
+          expiresAt: input.expiresAt,
+          invitationUrl: issuedAccess.invitationUrl,
+          recipientEmail: issuedAccess.recipientEmail,
+          surveyDescription: input.publishedVersionDescription,
+          surveyTitle: input.publishedVersionTitle
+        });
 
-      const sentInvitation = await this.invitationRepository.updateInvitationStatus(
-        invitation.id,
-        "sent"
-      );
+        await this.invitationRepository.updateEmailDeliveryStatus({
+          deliveryId: delivery.id,
+          providerMessageId: sendResult.providerMessageId,
+          status: "sent"
+        });
 
-      return {
-        failure: null,
-        invitation: this.toListItem(sentInvitation)
-      };
+        const sentInvitation = await this.invitationRepository.updateInvitationStatus(
+          issuedAccess.invitation.id,
+          "sent"
+        );
+
+        return {
+          failure: null,
+          invitation: this.toListItem(sentInvitation)
+        };
+      } catch (error) {
+        await this.invitationRepository.updateEmailDeliveryStatus({
+          deliveryId: delivery.id,
+          lastErrorCode: error instanceof AppError ? error.code : ERROR_CODES.emailProviderError,
+          lastErrorMessage: formatInvitationDeliveryError(error),
+          providerMetadata: extractInvitationDeliveryErrorMetadata(error),
+          status: "failed"
+        });
+
+        const failedInvitation = await this.invitationRepository.updateInvitationStatus(
+          issuedAccess.invitation.id,
+          "failed"
+        );
+
+        return {
+          failure: {
+            code: ERROR_CODES.invitationSendFailed,
+            email: issuedAccess.recipientEmail,
+            message: "Invitation was created but the email could not be sent."
+          },
+          invitation: this.toListItem(failedInvitation)
+        };
+      }
     } catch (error) {
-      await this.invitationRepository.updateEmailDeliveryStatus({
-        deliveryId: delivery.id,
-        lastErrorCode: error instanceof AppError ? error.code : ERROR_CODES.emailProviderError,
-        lastErrorMessage: formatInvitationDeliveryError(error),
-        providerMetadata: extractInvitationDeliveryErrorMetadata(error),
-        status: "failed"
-      });
+      if (error instanceof AppError && error.code === ERROR_CODES.invitationEmailAlreadyExists) {
+        const existingInvitation = await this.invitationRepository.findActiveInvitationByEmailHash(
+          input.surveyId,
+          protectEmailForLookup(normalizeInvitationEmail(input.recipientEmail))
+        );
 
-      const failedInvitation = await this.invitationRepository.updateInvitationStatus(
-        invitation.id,
-        "failed"
-      );
+        return {
+          failure: {
+            code: ERROR_CODES.invitationEmailAlreadyExists,
+            email: normalizeInvitationEmail(input.recipientEmail),
+            message: "An active invitation already exists for this email."
+          },
+          invitation: this.toListItem(existingInvitation!)
+        };
+      }
 
-      return {
-        failure: {
-          code: ERROR_CODES.invitationSendFailed,
-          email: recipientEmail,
-          message: "Invitation was created but the email could not be sent."
-        },
-        invitation: this.toListItem(failedInvitation)
-      };
+      throw error;
     }
   }
 

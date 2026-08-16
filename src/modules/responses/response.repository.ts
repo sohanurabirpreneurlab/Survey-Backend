@@ -41,6 +41,20 @@ const mapResponse = (row: Record<string, unknown>): SurveyResponse => ({
 });
 
 export class ResponseRepository implements IResponseRepository {
+  public async countSubmittedResponsesBySurveyId(surveyId: string): Promise<number> {
+    const result = await databasePool.query(
+      `
+        select count(*)::int as submitted_count
+        from survey_responses
+        where survey_id = $1
+          and status = 'submitted'
+      `,
+      [surveyId]
+    );
+
+    return Number((result.rows[0] as Record<string, unknown>).submitted_count ?? 0);
+  }
+
   private async upsertPreparedAnswer(client: DatabaseClient, responseId: string, answer: PreparedAnswerInput): Promise<void> {
     const answerResult = await client.query(
       `

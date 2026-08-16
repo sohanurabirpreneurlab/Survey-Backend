@@ -1,13 +1,20 @@
 import { databasePool } from "../../config/database";
 import type { IInvitationRepository } from "./invitation.repository.interface";
 import type {
+  CreateInvitationAccessTokenInput,
   CreateEmailDeliveryInput,
   CreateInvitationInput,
   EmailDelivery,
+  EnsureInvitationWithAccessTokenInput,
   RotateInvitationTokenInput,
   SurveyInvitation,
   UpdateEmailDeliveryStatusInput
 } from "./invitation.types";
+
+type DatabaseClient = {
+  query: (sql: string, values?: unknown[]) => Promise<{ rowCount?: number; rows: unknown[] }>;
+  release: () => void;
+};
 
 const mapInvitation = (row: Record<string, unknown>): SurveyInvitation => ({
   completedAt: row.completed_at ? String(row.completed_at) : null,
@@ -52,29 +59,141 @@ const mapDelivery = (row: Record<string, unknown>): EmailDelivery => ({
 });
 
 export class InvitationRepository implements IInvitationRepository {
-  public async createInvitation(input: CreateInvitationInput): Promise<SurveyInvitation> {
-    const result = await databasePool.query(
+  private async insertInvitationAccessToken(
+    client: DatabaseClient,
+    input: CreateInvitationAccessTokenInput
+  ): Promise<void> {
+    await client.query(
       `
-        insert into survey_invitations
-          (survey_id, survey_version_id, recipient_email_ciphertext, recipient_email_hash, token_hash, status, max_responses, expires_at, metadata, created_by)
-        values
-          ($1, $2, $3, $4, $5, 'pending', $6, $7, $8::jsonb, $9)
-        returning *
+        insert into invitation_access_tokens (invitation_id, token_hash, expires_at)
+        values ($1, $2, $3)
       `,
-      [
-        input.surveyId,
-        input.surveyVersionId,
-        input.recipientEmailCiphertext,
-        input.recipientEmailHash,
-        input.tokenHash,
-        input.maxResponses,
-        input.expiresAt,
-        JSON.stringify(input.metadata),
-        input.createdBy
-      ]
+      [input.invitationId, input.tokenHash, input.expiresAt]
     );
+  }
 
-    return mapInvitation(result.rows[0] as Record<string, unknown>);
+  public async createInvitation(input: CreateInvitationInput): Promise<SurveyInvitation> {
+    const client = await databasePool.connect();
+
+    try {
+      await client.query("begin");
+      const result = await client.query(
+        `
+          insert into survey_invitations
+            (survey_id, survey_version_id, recipient_email_ciphertext, recipient_email_hash, token_hash, status, max_responses, expires_at, metadata, created_by)
+          values
+            ($1, $2, $3, $4, $5, 'pending', $6, $7, $8::jsonb, $9)
+          returning *
+        `,
+        [
+          input.surveyId,
+          input.surveyVersionId,
+          input.recipientEmailCiphertext,
+          input.recipientEmailHash,
+          input.tokenHash,
+          input.maxResponses,
+          input.expiresAt,
+          JSON.stringify(input.metadata),
+          input.createdBy
+        ]
+      );
+
+      const invitation = mapInvitation(result.rows[0] as Record<string, unknown>);
+      await this.insertInvitationAccessToken(client, {
+        expiresAt: input.expiresAt,
+        invitationId: invitation.id,
+        tokenHash: input.tokenHash
+      });
+      await client.query("commit");
+      return invitation;
+    } catch (error) {
+      await client.query("rollback");
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  public async createInvitationAccessToken(input: CreateInvitationAccessTokenInput): Promise<void> {
+    const client = await databasePool.connect();
+
+    try {
+      await this.insertInvitationAccessToken(client, input);
+    } finally {
+      client.release();
+    }
+  }
+
+  public async ensureInvitationWithAccessToken(
+    input: EnsureInvitationWithAccessTokenInput
+  ): Promise<{ created: boolean; invitation: SurveyInvitation }> {
+    const client = await databasePool.connect();
+
+    try {
+      await client.query("begin");
+      await client.query("select pg_advisory_xact_lock(hashtext($1))", [
+        `${input.surveyId}:${input.recipientEmailHash}`
+      ]);
+
+      const existingResult = await client.query(
+        `
+          select *
+          from survey_invitations
+          where survey_id = $1
+            and recipient_email_hash = $2
+            and revoked_at is null
+            and (expires_at is null or expires_at > now())
+            and status not in ('completed', 'failed', 'revoked', 'expired')
+          order by created_at desc
+          limit 1
+        `,
+        [input.surveyId, input.recipientEmailHash]
+      );
+
+      if (existingResult.rowCount) {
+        await client.query("commit");
+        return {
+          created: false,
+          invitation: mapInvitation(existingResult.rows[0] as Record<string, unknown>)
+        };
+      }
+
+      const createdResult = await client.query(
+        `
+          insert into survey_invitations
+            (survey_id, survey_version_id, recipient_email_ciphertext, recipient_email_hash, token_hash, status, max_responses, expires_at, metadata, created_by)
+          values
+            ($1, $2, $3, $4, $5, 'pending', $6, $7, $8::jsonb, $9)
+          returning *
+        `,
+        [
+          input.surveyId,
+          input.surveyVersionId,
+          input.recipientEmailCiphertext,
+          input.recipientEmailHash,
+          input.tokenHash,
+          input.maxResponses,
+          input.expiresAt,
+          JSON.stringify(input.metadata),
+          input.createdBy
+        ]
+      );
+
+      const invitation = mapInvitation(createdResult.rows[0] as Record<string, unknown>);
+      await this.insertInvitationAccessToken(client, {
+        expiresAt: input.expiresAt,
+        invitationId: invitation.id,
+        tokenHash: input.tokenHash
+      });
+
+      await client.query("commit");
+      return { created: true, invitation };
+    } catch (error) {
+      await client.query("rollback");
+      throw error;
+    } finally {
+      client.release();
+    }
   }
 
   public async listSurveyInvitations(surveyId: string): Promise<SurveyInvitation[]> {
@@ -98,7 +217,25 @@ export class InvitationRepository implements IInvitationRepository {
 
   public async findInvitationByTokenHash(tokenHash: string): Promise<SurveyInvitation | null> {
     const result = await databasePool.query(
-      "select * from survey_invitations where token_hash = $1",
+      `
+        select si.*
+        from invitation_access_tokens iat
+        inner join survey_invitations si on si.id = iat.invitation_id
+        where iat.token_hash = $1
+          and iat.revoked_at is null
+          and (iat.expires_at is null or iat.expires_at > now())
+        union all
+        select si.*
+        from survey_invitations si
+        where si.token_hash = $1
+          and not exists (
+            select 1
+            from invitation_access_tokens iat2
+            where iat2.invitation_id = si.id
+              and iat2.token_hash = $1
+          )
+        limit 1
+      `,
       [tokenHash]
     );
     return result.rowCount ? mapInvitation(result.rows[0] as Record<string, unknown>) : null;
@@ -141,7 +278,34 @@ export class InvitationRepository implements IInvitationRepository {
       [input.invitationId, input.tokenHash]
     );
 
+    await databasePool.query(
+      `
+        insert into invitation_access_tokens (invitation_id, token_hash, expires_at)
+        select id, $2, expires_at
+        from survey_invitations
+        where id = $1
+      `,
+      [input.invitationId, input.tokenHash]
+    );
+
     return mapInvitation(result.rows[0] as Record<string, unknown>);
+  }
+
+  public async hasSubmittedResponse(surveyId: string, recipientEmailHash: string): Promise<boolean> {
+    const result = await databasePool.query(
+      `
+        select 1
+        from survey_invitations si
+        inner join survey_responses sr on sr.invitation_id = si.id
+        where si.survey_id = $1
+          and si.recipient_email_hash = $2
+          and sr.status = 'submitted'
+        limit 1
+      `,
+      [surveyId, recipientEmailHash]
+    );
+
+    return Boolean(result.rowCount);
   }
 
   public async revokeInvitation(invitationId: string): Promise<SurveyInvitation> {

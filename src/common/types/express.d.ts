@@ -28,10 +28,18 @@ declare namespace Express {
     surveyVersionId: string;
   }
 
+  export interface AuthenticatedIntegration {
+    issuer: string;
+    jwtId: string | null;
+    scopes: string[];
+    userId: string;
+  }
+
   export interface Request {
     account?: AccountProfile;
     admin?: AuthenticatedAdmin;
     auth?: AuthenticatedUser;
+    integration?: AuthenticatedIntegration;
     respondent?: AuthenticatedRespondent;
     requestId?: string;
     safeLogPath?: string;

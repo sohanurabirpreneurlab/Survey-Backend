@@ -68,10 +68,38 @@ export type CreateInvitationInput = {
   tokenHash: string;
 };
 
+export type InvitationAccessToken = {
+  createdAt: string;
+  expiresAt: string | null;
+  id: string;
+  invitationId: string;
+  lastUsedAt: string | null;
+  revokedAt: string | null;
+  tokenHash: string;
+};
+
 export type RotateInvitationTokenInput = {
   invitationId: string;
   tokenHash: string;
   updatedBy: string;
+};
+
+export type CreateInvitationAccessTokenInput = {
+  expiresAt: string | null;
+  invitationId: string;
+  tokenHash: string;
+};
+
+export type EnsureInvitationWithAccessTokenInput = {
+  createdBy: string;
+  expiresAt: string | null;
+  maxResponses: number;
+  metadata: Record<string, unknown>;
+  recipientEmailCiphertext: string;
+  recipientEmailHash: string;
+  surveyId: string;
+  surveyVersionId: string;
+  tokenHash: string;
 };
 
 export type CreateEmailDeliveryInput = {

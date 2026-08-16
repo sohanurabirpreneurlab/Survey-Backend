@@ -2,6 +2,7 @@ import type { SurveyResponse } from "./response.types";
 import type { AnswerRecord, PreparedAnswerInput, ResponseScoreRecord } from "./response.types";
 
 export interface IResponseRepository {
+  countSubmittedResponsesBySurveyId(surveyId: string): Promise<number>;
   findCurrentInProgress(sessionId: string): Promise<SurveyResponse | null>;
   createResponse(input: {
     invitationId: string | null;

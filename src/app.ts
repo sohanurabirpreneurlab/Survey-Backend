@@ -10,6 +10,7 @@ import { requestId } from "./common/middleware/request-id";
 import { adminRouter } from "./modules/admin/admin.routes";
 import { authRouter } from "./modules/auth/auth.routes";
 import { healthRouter } from "./modules/health/health.routes";
+import { externalSurveyRouter } from "./modules/integrations/external-survey.routes";
 import { organizationRouter } from "./modules/organizations/organization.routes";
 import { respondentRouter } from "./modules/respondents/respondent.routes";
 import { publicAccessRouter } from "./modules/respondents/public-access.routes";
@@ -71,6 +72,7 @@ export const createApp = (): express.Express => {
   });
 
   app.use("/api/v1/health", healthRouter);
+  app.use("/api/v1/integrations", externalSurveyRouter);
   app.use(publicAccessRouter);
   app.use("/api/v1/admin", adminRouter);
   app.use("/api/v1/auth", authRouter);

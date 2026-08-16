@@ -22,6 +22,13 @@ export type Env = {
   brevoApiKey: string | null;
   brevoSenderEmail: string | null;
   brevoSenderName: string | null;
+  integrationJwtAudience: string | null;
+  integrationJwtIssuer: string | null;
+  integrationJwtPublicKey: string | null;
+  integrationJwtRequiredScope: string;
+  integrationJwtSharedSecret: string | null;
+  integrationResolveRateLimitMaxRequests: number;
+  integrationResolveRateLimitWindowMs: number;
   respondentCookieName: string | null;
   respondentSessionTtlMinutes: number | null;
 };
@@ -178,6 +185,13 @@ export const env: Env = {
   brevoApiKey: getOptional("BREVO_API_KEY"),
   brevoSenderEmail: getOptional("BREVO_SENDER_EMAIL"),
   brevoSenderName: getOptional("BREVO_SENDER_NAME"),
+  integrationJwtAudience: getOptional("INTEGRATION_JWT_AUDIENCE"),
+  integrationJwtIssuer: getOptional("INTEGRATION_JWT_ISSUER"),
+  integrationJwtPublicKey: getOptional("INTEGRATION_JWT_PUBLIC_KEY"),
+  integrationJwtRequiredScope: getOptional("INTEGRATION_JWT_REQUIRED_SCOPE") ?? "survey:invitation:create",
+  integrationJwtSharedSecret: getOptional("INTEGRATION_JWT_SHARED_SECRET"),
+  integrationResolveRateLimitMaxRequests: getNumberWithDefault("INTEGRATION_RESOLVE_RATE_LIMIT_MAX_REQUESTS", 30),
+  integrationResolveRateLimitWindowMs: getNumberWithDefault("INTEGRATION_RESOLVE_RATE_LIMIT_WINDOW_MS", 60_000),
   respondentCookieName: getOptional("RESPONDENT_COOKIE_NAME"),
   respondentSessionTtlMinutes: getOptionalPositiveNumber("RESPONDENT_SESSION_TTL_MINUTES")
 };
