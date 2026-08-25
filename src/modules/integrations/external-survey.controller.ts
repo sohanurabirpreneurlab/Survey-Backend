@@ -6,14 +6,18 @@ import { ExternalSurveyService } from "./external-survey.service";
 const externalSurveyService = new ExternalSurveyService();
 
 export const resolveSurveyInvitation = async (request: Request, response: Response): Promise<void> => {
-  const result = await externalSurveyService.resolveInvitation({
-    createdBy: request.integration!.userId,
-    email: request.body.email,
-    requestId: request.requestId ?? null,
-    surveyId: request.body.surveyId
-  });
+  const results = await Promise.all(
+    (request.body.surveyIds as string[]).map((surveyId) =>
+      externalSurveyService.resolveInvitation({
+        createdBy: request.integration!.userId,
+        email: request.body.email,
+        requestId: request.requestId ?? null,
+        surveyId
+      })
+    )
+  );
 
-  sendSuccess(response, "Survey invitation resolved successfully.", result);
+  sendSuccess(response, "Survey invitations resolved successfully.", results);
 };
 
 export const getSurveyInfo = async (request: Request, response: Response): Promise<void> => {
