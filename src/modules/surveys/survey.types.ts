@@ -232,6 +232,12 @@ export type SurveySummaryWithAccess = SurveySummary & {
   access: SurveyAccessInfo;
 };
 
+export type SurveyInfo = Survey & {
+  currentDraftVersion: SurveyVersion | null;
+  publishedVersion: SurveyVersion | null;
+  versions: SurveyVersion[];
+};
+
 export type SurveyShareInfo = {
   accessMode: SurveyAccessMode;
   publicSlug: string;

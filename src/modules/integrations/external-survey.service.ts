@@ -26,6 +26,12 @@ export type ResolveExternalSurveyInvitationResult = {
   surveyName: string;
 };
 
+export type GetExternalSurveyInfoInput = {
+  requestId?: string | null;
+  surveyId: string;
+  userId: string;
+};
+
 export class ExternalSurveyService {
   public constructor(
     private readonly authRepository: IAuthRepository = new AuthRepository(),
@@ -143,6 +149,38 @@ export class ExternalSurveyService {
       surveyLink: issuedAccess.invitationUrl,
       surveyName: publishedVersion.title
     };
+  }
+
+  public async getSurveyInfo(input: GetExternalSurveyInfoInput) {
+    const integrationUser = await this.authRepository.findUserByUserId(input.userId);
+
+    if (!integrationUser || integrationUser.profile.accountStatus !== "approved") {
+      throw new AppError(
+        ERROR_CODES.integrationIdentityInactive,
+        "The integration identity is not active.",
+        403
+      );
+    }
+
+    const survey = await this.surveyRepository.getSurveyInfo(input.surveyId);
+
+    if (!survey || survey.deletedAt) {
+      throw new AppError(ERROR_CODES.surveyNotFound, "Survey was not found.", 404);
+    }
+
+    const membership = await this.organizationService.requireOrganizationMembership(
+      survey.organizationId,
+      integrationUser.userId
+    );
+    this.organizationService.requireSurveyReadPermission(membership);
+
+    logger.info("External survey info fetched.", {
+      integrationUserId: integrationUser.userId,
+      requestId: input.requestId,
+      surveyId: input.surveyId
+    });
+
+    return survey;
   }
 
   private logResolveResult(

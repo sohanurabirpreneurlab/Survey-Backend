@@ -29,6 +29,7 @@ import type {
   SurveyCalculatedScoreQuestion,
   SurveyCalculatedScoreTarget,
   Survey,
+  SurveyInfo,
   SurveySection,
   SurveyVersion,
   SurveyVersionDefinition,
@@ -490,6 +491,94 @@ export class SurveyRepository implements ISurveyRepository {
       limit: input.limit,
       page: input.page
     });
+  }
+
+  public async getSurveyInfo(surveyId: string): Promise<SurveyInfo | null> {
+    const surveyResult = await databasePool.query(
+      `
+        select
+          s.*,
+          dv.archived_at as current_draft_archived_at,
+          dv.change_summary as current_draft_change_summary,
+          dv.created_at as current_draft_created_at,
+          dv.created_by as current_draft_created_by,
+          dv.created_from_version_id as current_draft_created_from_version_id,
+          dv.description as current_draft_description,
+          dv.id as current_draft_id,
+          dv.published_at as current_draft_published_at,
+          dv.published_by as current_draft_published_by,
+          dv.settings as current_draft_settings,
+          dv.status as current_draft_status,
+          dv.survey_id as current_draft_survey_id,
+          dv.title as current_draft_title,
+          dv.updated_at as current_draft_updated_at,
+          dv.version_number as current_draft_version_number,
+          pv.archived_at as published_version_archived_at,
+          pv.change_summary as published_version_change_summary,
+          pv.created_at as published_version_created_at,
+          pv.created_by as published_version_created_by,
+          pv.created_from_version_id as published_version_created_from_version_id,
+          pv.description as published_version_description,
+          pv.id as published_version_id_value,
+          pv.published_at as published_version_published_at,
+          pv.published_by as published_version_published_by,
+          pv.settings as published_version_settings,
+          pv.status as published_version_status,
+          pv.survey_id as published_version_survey_id,
+          pv.title as published_version_title,
+          pv.updated_at as published_version_updated_at,
+          pv.version_number as published_version_version_number
+        from surveys s
+        left join survey_versions dv on dv.id = s.current_draft_version_id
+        left join survey_versions pv on pv.id = s.published_version_id
+        where s.id = $1
+          and s.deleted_at is null
+      `,
+      [surveyId]
+    );
+
+    if (!surveyResult.rowCount) {
+      return null;
+    }
+
+    const surveyRow = surveyResult.rows[0] as Record<string, unknown>;
+    const versionsResult = await databasePool.query(
+      "select * from survey_versions where survey_id = $1 order by version_number asc",
+      [surveyId]
+    );
+
+    const mapAliasedVersion = (rowPrefix: "current_draft" | "published_version"): SurveyVersion | null => {
+      const idKey = rowPrefix === "current_draft" ? "current_draft_id" : "published_version_id_value";
+
+      if (!surveyRow[idKey]) {
+        return null;
+      }
+
+      return mapSurveyVersion({
+        archived_at: surveyRow[`${rowPrefix}_archived_at`],
+        change_summary: surveyRow[`${rowPrefix}_change_summary`],
+        created_at: surveyRow[`${rowPrefix}_created_at`],
+        created_by: surveyRow[`${rowPrefix}_created_by`],
+        created_from_version_id: surveyRow[`${rowPrefix}_created_from_version_id`],
+        description: surveyRow[`${rowPrefix}_description`],
+        id: surveyRow[idKey],
+        published_at: surveyRow[`${rowPrefix}_published_at`],
+        published_by: surveyRow[`${rowPrefix}_published_by`],
+        settings: surveyRow[`${rowPrefix}_settings`],
+        status: surveyRow[`${rowPrefix}_status`],
+        survey_id: surveyRow[`${rowPrefix}_survey_id`],
+        title: surveyRow[`${rowPrefix}_title`],
+        updated_at: surveyRow[`${rowPrefix}_updated_at`],
+        version_number: surveyRow[`${rowPrefix}_version_number`]
+      });
+    };
+
+    return {
+      ...mapSurvey(surveyRow),
+      currentDraftVersion: mapAliasedVersion("current_draft"),
+      publishedVersion: mapAliasedVersion("published_version"),
+      versions: versionsResult.rows.map((row: Record<string, unknown>) => mapSurveyVersion(row))
+    };
   }
 
   public async findDraftVersion(surveyId: string): Promise<SurveyVersion | null> {

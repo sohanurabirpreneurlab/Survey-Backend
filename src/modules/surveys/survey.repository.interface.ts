@@ -30,6 +30,7 @@ import type {
   ListSurveysInput,
   ListSurveysResult,
   PublishDraftInput,
+  SurveyInfo,
 } from "./survey.types";
 
 export interface ISurveyRepository {
@@ -38,6 +39,7 @@ export interface ISurveyRepository {
   findSurveyByPublicSlug(publicSlug: string): Promise<Survey | null>;
   findSurveyBySlug(organizationId: string, slug: string): Promise<Survey | null>;
   listSurveys(input: ListSurveysInput): Promise<ListSurveysResult>;
+  getSurveyInfo(surveyId: string): Promise<SurveyInfo | null>;
   findDraftVersion(surveyId: string): Promise<SurveyVersion | null>;
   findPublishedVersion(surveyId: string): Promise<SurveyVersion | null>;
   findVersionById(surveyId: string, versionId: string): Promise<SurveyVersion | null>;

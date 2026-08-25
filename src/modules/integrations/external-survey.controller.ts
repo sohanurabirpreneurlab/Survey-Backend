@@ -15,3 +15,13 @@ export const resolveSurveyInvitation = async (request: Request, response: Respon
 
   sendSuccess(response, "Survey invitation resolved successfully.", result);
 };
+
+export const getSurveyInfo = async (request: Request, response: Response): Promise<void> => {
+  const result = await externalSurveyService.getSurveyInfo({
+    surveyId: request.body.surveyId,
+    userId: request.integration!.userId,
+    ...(request.requestId ? { requestId: request.requestId } : {})
+  });
+
+  sendSuccess(response, "Survey info fetched successfully.", result);
+};
