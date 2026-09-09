@@ -57,6 +57,31 @@ export class InvitationService {
     return result.invitation;
   }
 
+  public async sendInvitationEmail(input: {
+    createdBy: string;
+    recipientEmail: string;
+    surveyId: string;
+  }): Promise<InvitationListItem> {
+    const survey = await this.requireManageableSurvey(input.surveyId, input.createdBy);
+    const publishedVersion = await this.requirePublishedVersion(survey.id, survey.slug);
+    if (await this.hasSubmittedInvitationResponse(input)) {
+      throw new AppError(ERROR_CODES.invitationAlreadyCompleted, "This email has already completed the survey.", 409);
+    }
+    const result = await this.createAndDeliverInvitation({
+      ...input,
+      expiresAt: null,
+      maxResponses: 1,
+      publishedVersionDescription: publishedVersion.description,
+      publishedVersionId: publishedVersion.id,
+      publishedVersionTitle: publishedVersion.title,
+      reuseExistingInvitation: true
+    });
+    if (result.failure) {
+      throw new AppError(ERROR_CODES.invitationSendFailed, "The invitation email could not be sent.", 502);
+    }
+    return result.invitation;
+  }
+
   public async createInvitationsBatch(input: {
     createdBy: string;
     expiresAt: string | null;
@@ -336,6 +361,7 @@ export class InvitationService {
     publishedVersionId: string;
     publishedVersionTitle: string;
     recipientEmail: string;
+    reuseExistingInvitation?: boolean;
     surveyId: string;
   }): Promise<{ failure: (InvitationFailure & { code: string }) | null; invitation: InvitationListItem }> {
     try {
@@ -345,7 +371,7 @@ export class InvitationService {
         maxResponses: input.maxResponses,
         metadata: {},
         recipientEmail: input.recipientEmail,
-        reuseExistingInvitation: false,
+        reuseExistingInvitation: input.reuseExistingInvitation ?? false,
         surveyId: input.surveyId,
         surveyVersionId: input.publishedVersionId
       });
@@ -357,7 +383,7 @@ export class InvitationService {
 
       try {
         const sendResult = await this.emailProvider.sendInvitation({
-          expiresAt: input.expiresAt,
+          expiresAt: issuedAccess.invitation.expiresAt,
           invitationUrl: issuedAccess.invitationUrl,
           recipientEmail: issuedAccess.recipientEmail,
           surveyDescription: input.publishedVersionDescription,

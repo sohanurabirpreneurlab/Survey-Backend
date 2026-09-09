@@ -1,6 +1,9 @@
 import { AppError } from "../../common/errors/app-error";
 import { ERROR_CODES } from "../../common/errors/error-codes";
 import { logger } from "../../common/utils/logger";
+import { normalizeInvitationEmail, protectEmailForLookup } from "../../common/security/email-protection";
+import { SurveyCompletionRepository } from "./survey-completion.repository";
+import { IntegrationSurveyAccessRepository } from "./integration-survey-access.repository";
 import { AuthRepository } from "../auth/auth.repository";
 import type { IAuthRepository } from "../auth/auth.repository.interface";
 import { InvitationService } from "../invitations/invitation.service";
@@ -38,7 +41,9 @@ export class ExternalSurveyService {
     private readonly invitationService = new InvitationService(),
     private readonly organizationService = new OrganizationService(),
     private readonly responseRepository: IResponseRepository = new ResponseRepository(),
-    private readonly surveyRepository: ISurveyRepository = new SurveyRepository()
+    private readonly surveyRepository: ISurveyRepository = new SurveyRepository(),
+    private readonly completionRepository = new SurveyCompletionRepository(),
+    private readonly accessRepository = new IntegrationSurveyAccessRepository()
   ) {}
 
   public async resolveInvitation(
@@ -148,6 +153,73 @@ export class ExternalSurveyService {
       surveyId: survey.id,
       surveyLink: issuedAccess.invitationUrl,
       surveyName: publishedVersion.title
+    };
+  }
+
+  public async sendInvitationEmail(input: GetExternalSurveyInfoInput & { email: string }) {
+    const integrationUser = await this.authRepository.findUserByUserId(input.userId);
+    if (!integrationUser || integrationUser.profile.accountStatus !== "approved") {
+      throw new AppError(ERROR_CODES.integrationIdentityInactive, "The integration identity is not active.", 403);
+    }
+    const survey = await this.surveyRepository.findSurveyById(input.surveyId);
+    if (!survey || survey.deletedAt) {
+      throw new AppError(ERROR_CODES.surveyNotFound, "Survey was not found.", 404);
+    }
+    const membership = await this.organizationService.requireOrganizationMembership(survey.organizationId, integrationUser.userId);
+    this.organizationService.requireSurveyPublishPermission(membership);
+    if (survey.accessMode !== "invite_only") {
+      throw new AppError(ERROR_CODES.surveyInviteOnlyRequired, "Survey must be invite-only for this integration flow.", 409);
+    }
+    if (survey.status === "closed" || (survey.closesAt && new Date(survey.closesAt).getTime() <= Date.now())) {
+      throw new AppError(ERROR_CODES.surveyClosed, "Survey is closed.", 409);
+    }
+    if (survey.status !== "published" || !survey.publishedVersionId) {
+      throw new AppError(ERROR_CODES.surveyNotPublished, "Survey must be published before emails can be sent.", 409);
+    }
+    if (survey.opensAt && new Date(survey.opensAt).getTime() > Date.now()) {
+      throw new AppError(ERROR_CODES.surveyNotOpenYet, "Survey is not open yet.", 409);
+    }
+    if (survey.responseLimit !== null) {
+      const count = await this.responseRepository.countSubmittedResponsesBySurveyId(survey.id);
+      if (count >= survey.responseLimit) {
+        throw new AppError(ERROR_CODES.surveyNotAcceptingResponses, "Survey response limit has been reached.", 409);
+      }
+    }
+    const email = normalizeInvitationEmail(input.email);
+    const invitation = await this.invitationService.sendInvitationEmail({
+      createdBy: integrationUser.userId, recipientEmail: email, surveyId: survey.id
+    });
+    return { surveyId: survey.id, email, invitationId: invitation.id, status: "sent" as const };
+  }
+
+  public async getCompletionStatus(input: GetExternalSurveyInfoInput & { emails: string[] }) {
+    const access = await this.accessRepository.findAccess(input.userId, input.surveyId);
+    if (access.accountStatus !== "approved") {
+      throw new AppError(ERROR_CODES.integrationIdentityInactive, "The integration identity is not active.", 403);
+    }
+
+    if (!access.surveyId) {
+      throw new AppError(ERROR_CODES.surveyNotFound, "Survey was not found.", 404);
+    }
+    if (!access.membership) {
+      throw new AppError(ERROR_CODES.organizationMembershipRequired, "You must belong to this organization.", 403);
+    }
+    this.organizationService.requireSurveyReadPermission(access.membership);
+
+    const emails = [...new Set(input.emails.map(normalizeInvitationEmail))];
+    const hashes = emails.map(protectEmailForLookup);
+    const records = await this.completionRepository.findByEmailHashes(access.surveyId, hashes);
+    const byHash = new Map(records.map((record) => [record.emailHash, record]));
+
+    return {
+      surveyId: access.surveyId,
+      results: emails.map((email, index) => {
+        const record = byHash.get(hashes[index]!);
+        const completedAt = record?.completedAt ?? null;
+        const lastInvitationEmailSentAt = record?.lastInvitationEmailSentAt ?? null;
+        return { email, hasSubmitted: completedAt !== null, completedAt,
+          hasInvitationEmailBeenSent: lastInvitationEmailSentAt !== null, lastInvitationEmailSentAt };
+      })
     };
   }
 
