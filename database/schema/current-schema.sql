@@ -92,7 +92,7 @@ create table public.surveys (
   organization_id uuid not null references public.organizations(id) on delete restrict,
   slug text not null,
   status text not null check (status in ('draft', 'published', 'closed', 'archived')),
-  access_mode text not null check (access_mode in ('public', 'invite_only', 'authenticated', 'organization_only')),
+  access_mode text not null check (access_mode in ('public', 'hybrid', 'invite_only', 'authenticated', 'organization_only')),
   current_draft_version_id uuid null,
   published_version_id uuid null,
   opens_at timestamptz null,

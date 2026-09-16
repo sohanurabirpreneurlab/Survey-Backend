@@ -12,6 +12,8 @@ export type Env = {
   port: number;
   appBaseUrl: string;
   databaseUrl: string;
+  databaseConnectionTimeoutMs: number;
+  databaseIdleTimeoutMs: number;
   authAccessTokenTtlMinutes: number;
   authJwtSecret: string | null;
   authPasswordResetRedirectUrl: string | null;
@@ -179,6 +181,8 @@ export const env: Env = {
   authPasswordResetRedirectUrl: getOptional("AUTH_PASSWORD_RESET_REDIRECT_URL"),
   authRefreshTokenTtlDays: getNumberWithDefault("AUTH_REFRESH_TOKEN_TTL_DAYS", 30),
   databaseUrl: getRequired("DATABASE_URL"),
+  databaseConnectionTimeoutMs: getNumberWithDefault("DATABASE_CONNECTION_TIMEOUT_MS", 30_000),
+  databaseIdleTimeoutMs: getNumberWithDefault("DATABASE_IDLE_TIMEOUT_MS", 30_000),
   invitationEmailHashSecret: getOptional("INVITATION_EMAIL_HASH_SECRET"),
   invitationEmailEncryptionKey: getOptionalKey("INVITATION_EMAIL_ENCRYPTION_KEY", 32),
   respondentSessionSecret: getOptional("RESPONDENT_SESSION_SECRET"),

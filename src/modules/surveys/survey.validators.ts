@@ -33,7 +33,7 @@ export const createSurveyValidators = [
   body("description").optional({ nullable: true }).isString().withMessage("description must be a string."),
   body("settings").optional().isObject().withMessage("settings must be an object."),
   body("accessMode")
-    .isIn(["public", "invite_only", "authenticated", "organization_only"])
+    .isIn(["public", "hybrid", "invite_only", "authenticated", "organization_only"])
     .withMessage("accessMode is invalid."),
   body("opensAt").optional({ nullable: true }).custom(isOptionalIsoDate).withMessage("opensAt must be a valid date or null."),
   body("closesAt").optional({ nullable: true }).custom(isOptionalIsoDate).withMessage("closesAt must be a valid date or null."),
@@ -50,7 +50,7 @@ export const updateSurveyValidators = [
   ...surveyIdParamValidator,
   body("slug").isString().trim().notEmpty().withMessage("slug is required."),
   body("accessMode")
-    .isIn(["public", "invite_only", "authenticated", "organization_only"])
+    .isIn(["public", "hybrid", "invite_only", "authenticated", "organization_only"])
     .withMessage("accessMode is invalid."),
   body("opensAt").optional({ nullable: true }).custom(isOptionalIsoDate).withMessage("opensAt must be a valid date or null."),
   body("closesAt").optional({ nullable: true }).custom(isOptionalIsoDate).withMessage("closesAt must be a valid date or null."),

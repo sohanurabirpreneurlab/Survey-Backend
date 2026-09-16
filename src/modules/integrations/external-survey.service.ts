@@ -71,10 +71,10 @@ export class ExternalSurveyService {
     );
     this.organizationService.requireSurveyPublishPermission(membership);
 
-    if (survey.accessMode !== "invite_only") {
+    if (survey.accessMode !== "invite_only" && survey.accessMode !== "hybrid") {
       throw new AppError(
         ERROR_CODES.surveyInviteOnlyRequired,
-        "Survey must be invite-only for this integration flow.",
+        "Survey must allow invitation access for this integration flow.",
         409
       );
     }

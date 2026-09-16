@@ -1,7 +1,7 @@
 # Survey Backend
 
 This backend lives in `survey-backend` and uses `express-validator` for request validation.
-It is configured to use `DATABASE_URL` for the PostgreSQL connection, including Supabase session-pooler connection strings.
+It is configured to use `DATABASE_URL` for the PostgreSQL connection. For Vercel/serverless deployment, use the Supabase transaction-pooler connection string on port `6543`.
 
 ## Stack
 
@@ -16,7 +16,7 @@ It is configured to use `DATABASE_URL` for the PostgreSQL connection, including 
 ## Quick start
 
 1. Copy `.env.example` to `.env`.
-2. Set `DATABASE_URL` to your Supabase session-pooler connection string.
+2. Set `DATABASE_URL` to your Supabase transaction-pooler connection string (port `6543`) for Vercel/serverless deployment.
 3. Install dependencies with `npm install`.
 4. Run the dev server with `npm run dev`.
 5. Type-check with `npm run typecheck`.
@@ -61,6 +61,8 @@ Required:
 ```env
 FRONTEND_URL=http://localhost:4000
 DATABASE_URL=postgresql://...
+DATABASE_CONNECTION_TIMEOUT_MS=30000
+DATABASE_IDLE_TIMEOUT_MS=30000
 ```
 
 Recommended:

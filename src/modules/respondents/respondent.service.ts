@@ -39,7 +39,7 @@ export class RespondentService {
       throw new AppError(ERROR_CODES.invitationTokenInvalid, "Invitation token is invalid.", 401);
     }
 
-    const survey = await this.requireAccessibleSurvey(invitation.surveyId, "invite_only");
+    const survey = await this.requireAccessibleSurvey(invitation.surveyId, "invitation");
     this.assertInvitationUsable(invitation);
     const surveyDefinition = await this.buildPublicSurvey(survey.publicSlug, invitation.surveyVersionId);
 
@@ -207,20 +207,20 @@ export class RespondentService {
     }
   }
 
-  private async requireAccessibleSurvey(surveyId: string, expectedAccessMode?: "public" | "invite_only") {
+  private async requireAccessibleSurvey(surveyId: string, accessChannel?: "public" | "invitation") {
     const survey = await this.surveyRepository.findSurveyById(surveyId);
 
     if (!survey) {
       throw new AppError(ERROR_CODES.surveyNotFound, "Survey was not found.", 404);
     }
 
-    await this.validateSurveyAvailability(survey, expectedAccessMode);
+    await this.validateSurveyAvailability(survey, accessChannel);
     return survey;
   }
 
   private async validateSurveyAvailability(
     survey: Survey,
-    expectedAccessMode?: "public" | "invite_only"
+    accessChannel?: "public" | "invitation"
   ) {
     if (survey.deletedAt || survey.status === "archived") {
       throw new AppError(ERROR_CODES.surveyNotFound, "Survey was not found.", 404);
@@ -230,7 +230,13 @@ export class RespondentService {
       throw new AppError(ERROR_CODES.surveyNotPublished, "Survey is not available.", 404);
     }
 
-    if (expectedAccessMode && survey.accessMode !== expectedAccessMode) {
+    const isAccessChannelAllowed =
+      !accessChannel ||
+      (accessChannel === "public" && (survey.accessMode === "public" || survey.accessMode === "hybrid")) ||
+      (accessChannel === "invitation" &&
+        (survey.accessMode === "invite_only" || survey.accessMode === "hybrid"));
+
+    if (!isAccessChannelAllowed) {
       throw new AppError(ERROR_CODES.respondentAccessDenied, "Survey access is not allowed from this link.", 403);
     }
 

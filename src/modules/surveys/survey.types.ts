@@ -4,6 +4,7 @@ export const SURVEY_STATUSES = ["draft", "published", "closed", "archived"] as c
 export const SURVEY_VERSION_STATUSES = ["draft", "published", "archived"] as const;
 export const SURVEY_ACCESS_MODES = [
   "public",
+  "hybrid",
   "invite_only",
   "authenticated",
   "organization_only"

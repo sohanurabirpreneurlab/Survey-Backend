@@ -139,7 +139,7 @@ Stores the permanent survey identity and operational state.
 | organization_id | uuid | No | — | Owning organization |
 | slug | text | No | — | URL-friendly survey identifier unique within the organization |
 | status | text | No | — | Lifecycle state: `draft`, `published`, `closed`, `archived` |
-| access_mode | text | No | — | Access policy: `public`, `invite_only`, `authenticated`, `organization_only` |
+| access_mode | text | No | — | Access policy: `public`, `hybrid`, `invite_only`, `authenticated`, `organization_only`. Hybrid accepts anonymous public responses and tracked invitation responses. |
 | current_draft_version_id | uuid | Yes | `null` | Editable draft version |
 | published_version_id | uuid | Yes | `null` | Version visible to respondents |
 | opens_at | timestamptz | Yes | `null` | Survey open time |

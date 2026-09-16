@@ -19,6 +19,51 @@ type ErrorResponseBody = {
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null;
 
+const databaseConnectionErrorCodes = new Set([
+  "ECONNREFUSED",
+  "ECONNRESET",
+  "EHOSTUNREACH",
+  "ENETUNREACH",
+  "ETIMEDOUT",
+  "57P01",
+  "57P02",
+  "57P03"
+]);
+
+const isDatabaseConnectionError = (error: unknown): error is Error & { code?: string } => {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+
+  const code = "code" in error && typeof error.code === "string" ? error.code : "";
+  const message = error.message.toLowerCase();
+
+  return (
+    databaseConnectionErrorCodes.has(code) ||
+    message.includes("connection terminated") ||
+    message.includes("connection timeout") ||
+    message.includes("timeout expired")
+  );
+};
+
+const logServerError = (error: unknown, request: Request, requestId: string | null) => {
+  const errorRecord = error instanceof Error
+    ? {
+        code: "code" in error ? error.code : undefined,
+        message: error.message,
+        name: error.name,
+        stack: env.nodeEnv === "production" ? undefined : error.stack
+      }
+    : error;
+
+  console.error("Request failed", {
+    error: errorRecord,
+    method: request.method,
+    path: request.safeLogPath ?? request.originalUrl,
+    requestId
+  });
+};
+
 const buildUnexpectedErrorResponse = (requestId: string | null): ErrorResponseBody => ({
   success: false,
   error: {
@@ -114,9 +159,29 @@ export const errorHandler = (
   _next: NextFunction
 ): void => {
   const requestId = request.requestId ?? null;
+
+  if (isDatabaseConnectionError(error)) {
+    logServerError(error, request, requestId);
+    response.status(503).json({
+      success: false,
+      error: {
+        code: ERROR_CODES.databaseError,
+        message: "The database is temporarily unavailable. Please retry the request.",
+        details: null
+      },
+      meta: {
+        requestId
+      }
+    });
+    return;
+  }
+
   const normalizedError = normalizeErrorResponse(error, requestId);
 
   if (normalizedError) {
+    if (normalizedError.statusCode >= 500) {
+      logServerError(error, request, requestId);
+    }
     response.status(normalizedError.statusCode).json(normalizedError.body);
     return;
   }
