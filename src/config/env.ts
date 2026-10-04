@@ -176,7 +176,7 @@ export const env: Env = {
   nodeEnv: getNodeEnv(),
   port: getPort(),
   appBaseUrl: getRequired("FRONTEND_URL"),
-  authAccessTokenTtlMinutes: getNumberWithDefault("AUTH_ACCESS_TOKEN_TTL_MINUTES", 15),
+  authAccessTokenTtlMinutes: getNumberWithDefault("AUTH_ACCESS_TOKEN_TTL_MINUTES", 1440),
   authJwtSecret: getOptional("AUTH_JWT_SECRET"),
   authPasswordResetRedirectUrl: getOptional("AUTH_PASSWORD_RESET_REDIRECT_URL"),
   authRefreshTokenTtlDays: getNumberWithDefault("AUTH_REFRESH_TOKEN_TTL_DAYS", 30),

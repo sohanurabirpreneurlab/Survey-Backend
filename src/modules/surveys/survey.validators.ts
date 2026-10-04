@@ -99,7 +99,14 @@ export const reorderSectionsValidators = [
   body("items.*.position").isInt({ min: 0 }).withMessage("position must be zero or greater.")
 ];
 
+const descriptionSettingsValidators = [
+  body("settings.descriptionWhen").optional().isIn(["off", "yes", "no", "both"]).withMessage("Description trigger is invalid."),
+  body("settings.descriptionRequired").optional().custom((value) => typeof value === "boolean").withMessage("Description required must be a boolean."),
+  body("settings.descriptionLabel").optional().isString().isLength({ max: 200 }).withMessage("Description label must be text up to 200 characters.")
+];
+
 export const createQuestionValidators = [
+  ...descriptionSettingsValidators,
   ...surveyIdParamValidator,
   body("sectionId").isUUID().withMessage("sectionId must be a valid UUID."),
   body("type")
@@ -113,6 +120,7 @@ export const createQuestionValidators = [
 ];
 
 export const updateQuestionValidators = [
+  ...descriptionSettingsValidators,
   ...surveyIdParamValidator,
   ...questionIdParamValidator,
   body("type")

@@ -115,6 +115,12 @@ surveyRouter.post(
   asyncHandler(createSection)
 );
 surveyRouter.patch(
+  "/:surveyId/draft/sections/reorder",
+  reorderSectionsValidators,
+  validateRequest,
+  asyncHandler(reorderSections)
+);
+surveyRouter.patch(
   "/:surveyId/draft/sections/:sectionId",
   updateSectionValidators,
   validateRequest,
@@ -126,18 +132,18 @@ surveyRouter.delete(
   validateRequest,
   asyncHandler(deleteSection)
 );
-surveyRouter.patch(
-  "/:surveyId/draft/sections/reorder",
-  reorderSectionsValidators,
-  validateRequest,
-  asyncHandler(reorderSections)
-);
 
 surveyRouter.post(
   "/:surveyId/draft/questions",
   createQuestionValidators,
   validateRequest,
   asyncHandler(createQuestion)
+);
+surveyRouter.patch(
+  "/:surveyId/draft/questions/reorder",
+  reorderQuestionsValidators,
+  validateRequest,
+  asyncHandler(reorderQuestions)
 );
 surveyRouter.patch(
   "/:surveyId/draft/questions/:questionId",
@@ -150,12 +156,6 @@ surveyRouter.delete(
   deleteQuestionValidators,
   validateRequest,
   asyncHandler(deleteQuestion)
-);
-surveyRouter.patch(
-  "/:surveyId/draft/questions/reorder",
-  reorderQuestionsValidators,
-  validateRequest,
-  asyncHandler(reorderQuestions)
 );
 
 surveyRouter.post(
@@ -171,6 +171,12 @@ surveyRouter.patch(
   asyncHandler(bulkUpdateOptionScores)
 );
 surveyRouter.patch(
+  "/:surveyId/draft/questions/:questionId/options/reorder",
+  reorderOptionsValidators,
+  validateRequest,
+  asyncHandler(reorderOptions)
+);
+surveyRouter.patch(
   "/:surveyId/draft/questions/:questionId/options/:optionId",
   updateOptionValidators,
   validateRequest,
@@ -181,12 +187,6 @@ surveyRouter.delete(
   deleteOptionValidators,
   validateRequest,
   asyncHandler(deleteOption)
-);
-surveyRouter.patch(
-  "/:surveyId/draft/questions/:questionId/options/reorder",
-  reorderOptionsValidators,
-  validateRequest,
-  asyncHandler(reorderOptions)
 );
 
 surveyRouter.get(

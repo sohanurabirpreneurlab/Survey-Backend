@@ -919,6 +919,11 @@ export class SurveyRepository implements ISurveyRepository {
 
   public async createQuestion(input: CreateQuestionInput): Promise<Question> {
     return withTransaction(async (client) => {
+      // Serialize allocation with other creates and reorders in this section.
+      await client.query("select id from survey_sections where id = $1 for update", [input.sectionId]);
+      const positions = await client.query("select position from questions where section_id = $1", [input.sectionId]);
+      const usedPositions = positions.rows.map((row) => Number((row as { position: number }).position));
+      const position = usedPositions.includes(input.position) ? Math.max(-1, ...usedPositions) + 1 : input.position;
       const questionResult = await client.query(
         `
           insert into questions
@@ -935,7 +940,7 @@ export class SurveyRepository implements ISurveyRepository {
           input.title,
           input.description,
           input.required,
-          input.position,
+          position,
           JSON.stringify(input.validation),
           JSON.stringify(input.displayLogic),
           JSON.stringify(input.settings)
@@ -1021,6 +1026,17 @@ export class SurveyRepository implements ISurveyRepository {
 
   public async reorderQuestions(input: ReorderQuestionsInput): Promise<Question[]> {
     await withTransaction(async (client) => {
+      await client.query("select id from survey_sections where id = $1 for update", [input.sectionId]);
+      const positions = await client.query("select position from questions where section_id = $1", [input.sectionId]);
+      const temporaryStart = Math.max(-1, ...positions.rows.map((row) => Number((row as { position: number }).position)), ...input.items.map((item) => item.position)) + 1;
+      // Free every destination before assigning final positions; the unique
+      // constraint is immediate, so directly swapping occupied positions fails.
+      for (const [index, item] of input.items.entries()) {
+        await client.query(
+          "update questions set position = $2, updated_at = now() where id = $1 and section_id = $3",
+          [item.questionId, temporaryStart + index, input.sectionId]
+        );
+      }
       for (const item of input.items) {
         await client.query(
           "update questions set position = $2, updated_at = now() where id = $1 and section_id = $3",

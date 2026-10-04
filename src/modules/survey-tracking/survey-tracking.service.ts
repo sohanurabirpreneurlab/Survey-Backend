@@ -58,7 +58,9 @@ const formatAnswerValue = (
   }
 
   if (questionType === "yes_no") {
-    return answer.valueBoolean === null ? "No answer" : answer.valueBoolean ? "Yes" : "No";
+    const label = answer.valueBoolean === null ? "No answer" : answer.valueBoolean ? "Yes" : "No";
+    const description = answer.valueJson && typeof answer.valueJson === "object" && "description" in answer.valueJson && typeof answer.valueJson.description === "string" ? answer.valueJson.description : "";
+    return description ? `${label} — ${description}` : label;
   }
 
   if (questionType === "rating") {

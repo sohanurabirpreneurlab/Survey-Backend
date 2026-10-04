@@ -58,6 +58,7 @@ const validDefinition = (): SurveyVersionDefinition => ({
       id: "sec-1",
       position: 0,
       stableKey: "sec_work",
+      settings: {},
       surveyVersionId: "ver-1",
       title: "Work",
       updatedAt: ""
@@ -95,3 +96,19 @@ test("validateDraftForPublishing rejects missing options for a choice question",
   assert.equal(result.isValid, false);
   assert.ok(result.errors.some((error) => error.field.includes("options")));
 });
+
+
+test("built-in Yes/No publishes without custom option rows", () => {
+  const definition = validDefinition();
+  definition.questions[0].type = "yes_no";
+  definition.options = [];
+  assert.equal(validateDraftForPublishing(definition).isValid, true);
+});
+for (const type of ["single_choice", "multiple_choice", "vote"] as const) {
+  test(`${type} still requires at least two custom options`, () => {
+    const definition = validDefinition();
+    definition.questions[0].type = type;
+    definition.options = definition.options.slice(0, 1);
+    assert.ok(validateDraftForPublishing(definition).errors.some((error) => error.field === "question:q-1:options"));
+  });
+}

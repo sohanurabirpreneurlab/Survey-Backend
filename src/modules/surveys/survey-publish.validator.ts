@@ -51,7 +51,7 @@ const validateOptions = (
     optionValues.add(option.value);
   }
 
-  if (["single_choice", "multiple_choice", "vote", "yes_no"].includes(question.type) && options.length < 2) {
+  if (["single_choice", "multiple_choice", "vote"].includes(question.type) && options.length < 2) {
     errors.push({
       field: `question:${question.id}:options`,
       message: "Choice questions must have at least two options."

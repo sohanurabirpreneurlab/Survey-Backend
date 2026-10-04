@@ -63,14 +63,28 @@ export const validateAnswerValue = (
       };
     }
     case "yes_no": {
-      if (typeof value !== "boolean") {
+      const structured = value && typeof value === "object" && !Array.isArray(value)
+        ? value as { answer?: unknown; description?: unknown } : null;
+      const answer = typeof value === "boolean" ? value : structured?.answer;
+      if (typeof answer !== "boolean") {
         throw new AppError(ERROR_CODES.answerInvalid, "Yes/no answer must be a boolean.", 400);
       }
-
+      const mode = question.settings.descriptionWhen;
+      const showDescription = mode === "both" || (mode === "yes" && answer) || (mode === "no" && !answer);
+      if (showDescription && structured?.description !== undefined && typeof structured.description !== "string") {
+        throw new AppError(ERROR_CODES.answerInvalid, "Description must be text.", 400);
+      }
+      const description = showDescription && typeof structured?.description === "string" ? structured.description.trim() : "";
+      if (showDescription && question.settings.descriptionRequired === true && !description) {
+        throw new AppError(ERROR_CODES.answerInvalid, "Please provide a description for this answer.", 400);
+      }
+      if (description.length > 5000) {
+        throw new AppError(ERROR_CODES.answerInvalid, "Description must be 5000 characters or fewer.", 400);
+      }
       return {
         optionIds: [],
-        valueBoolean: value,
-        valueJson: null,
+        valueBoolean: answer,
+        valueJson: description ? { description } : null,
         valueNumber: null,
         valueText: null,
         valueTimestamp: null
