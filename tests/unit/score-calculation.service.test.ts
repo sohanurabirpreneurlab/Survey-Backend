@@ -180,6 +180,21 @@ test("ScoreCalculationService leaves score unresolved when requireAllAnswers is 
   assert.equal(result.thresholdMatched, null);
 });
 
+test("ScoreCalculationService activates when any source question matches the threshold", () => {
+  const definition = buildDefinition();
+  definition.calculatedScores[0].thresholdOperator = "greater_than_or_equal";
+  definition.calculatedScores[0].thresholdValue = 4;
+  definition.calculatedScores[0].requireAllAnswers = false;
+
+  const answers = buildAnswers().map((answer) =>
+    answer.questionId === "q-1" ? { ...answer, scoreSnapshot: 4 } : { ...answer, scoreSnapshot: 2 }
+  );
+  const [result] = new ScoreCalculationService().calculate(definition, answers);
+
+  assert.equal(result.scoreValue, 3);
+  assert.equal(result.thresholdMatched, true);
+});
+
 test("SurveyVisibilityService activates section follow-up when threshold matches", () => {
   const service = new SurveyVisibilityService();
   const visibility = service.resolve(buildDefinition(), [

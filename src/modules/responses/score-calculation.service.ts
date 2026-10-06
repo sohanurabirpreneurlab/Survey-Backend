@@ -72,6 +72,10 @@ const calculateAverageScore = (
     const numericScore = question ? resolveAnswerNumericScore(question, answer, options) : null;
 
     if (numericScore === null) {
+      if (!score.requireAllAnswers) {
+        continue;
+      }
+
       return {
         calculated: false,
         calculatedScoreId: score.id,
@@ -85,7 +89,7 @@ const calculateAverageScore = (
     questionIdsUsed.push(sourceQuestion.questionId);
   }
 
-  if (values.length === 0) {
+  if (values.length === 0 || (score.requireAllAnswers && values.length !== score.questions.length)) {
     return {
       calculated: false,
       calculatedScoreId: score.id,
@@ -96,14 +100,16 @@ const calculateAverageScore = (
   }
 
   const scoreValue = values.reduce((sum, value) => sum + value, 0) / values.length;
-  const threshold = evaluateThreshold(scoreValue, score.thresholdOperator, score.thresholdValue);
+  const thresholdMatched = values.some((value) =>
+    evaluateThreshold(value, score.thresholdOperator, score.thresholdValue).thresholdMatched === true
+  );
 
   return {
-    calculated: threshold.calculated,
+    calculated: true,
     calculatedScoreId: score.id,
     questionIdsUsed,
-    scoreValue: threshold.scoreValue,
-    thresholdMatched: threshold.thresholdMatched
+    scoreValue,
+    thresholdMatched
   };
 };
 
