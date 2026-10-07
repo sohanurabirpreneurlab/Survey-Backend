@@ -38,7 +38,7 @@ const fallbackAnswerValue = (answer: SurveyTrackingResponseAnswer): string => {
   return "No answer";
 };
 
-const formatAnswerValue = (
+export const formatAnswerValue = (
   questionType: string | undefined,
   answer: SurveyTrackingResponseAnswer,
   options: QuestionOption[]
@@ -48,7 +48,10 @@ const formatAnswerValue = (
   }
 
   if (questionType === "single_choice" || questionType === "vote") {
-    return options.find((option) => option.id === answer.valueText)?.label ?? answer.valueText ?? "No answer";
+    const optionId = answer.optionIds[0] ?? answer.valueText;
+    const label = options.find((option) => option.id === optionId)?.label ?? optionId ?? "No answer";
+    const otherText = answer.valueJson && typeof answer.valueJson === "object" && "otherText" in answer.valueJson && typeof answer.valueJson.otherText === "string" ? answer.valueJson.otherText : "";
+    return otherText ? `${label} — ${otherText}` : label;
   }
 
   if (questionType === "multiple_choice") {

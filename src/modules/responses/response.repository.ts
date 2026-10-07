@@ -103,6 +103,52 @@ export class ResponseRepository implements IResponseRepository {
     }
   }
 
+  private async upsertPreparedAnswers(client: DatabaseClient, responseId: string, answers: PreparedAnswerInput[]): Promise<void> {
+    if (answers.length === 0) return;
+
+    // Save the entire submission in three round trips, regardless of question count.
+    const result = await client.query(
+      `
+        insert into answers (
+          response_id, question_id, question_stable_key, value_text, value_number,
+          value_boolean, value_timestamp, value_json, score_snapshot
+        )
+        select $1, x."questionId", x."questionStableKey", x."valueText", x."valueNumber",
+               x."valueBoolean", x."valueTimestamp", x."valueJson", x."scoreSnapshot"
+        from jsonb_to_recordset($2::jsonb) as x(
+          "questionId" uuid, "questionStableKey" text, "valueText" text,
+          "valueNumber" numeric, "valueBoolean" boolean, "valueTimestamp" timestamptz,
+          "valueJson" jsonb, "scoreSnapshot" numeric
+        )
+        on conflict (response_id, question_id) do update
+          set question_stable_key = excluded.question_stable_key,
+              value_text = excluded.value_text,
+              value_number = excluded.value_number,
+              value_boolean = excluded.value_boolean,
+              value_timestamp = excluded.value_timestamp,
+              value_json = excluded.value_json,
+              score_snapshot = excluded.score_snapshot,
+              updated_at = now()
+        returning id, question_id
+      `,
+      [responseId, JSON.stringify(answers)]
+    );
+    const rows = result.rows as Array<{ id: string; question_id: string }>;
+    await client.query("delete from answer_choices where answer_id = any($1::uuid[])", [rows.map((row) => row.id)]);
+    const answerIds = new Map(rows.map((row) => [row.question_id, row.id]));
+    const choices = answers.flatMap((answer) => answer.optionIds.map((optionId) => ({
+      answer_id: answerIds.get(answer.questionId), option_id: optionId
+    })));
+    if (choices.length > 0) {
+      await client.query(
+        `insert into answer_choices (answer_id, option_id)
+         select answer_id, option_id
+         from jsonb_to_recordset($1::jsonb) as x(answer_id uuid, option_id uuid)`,
+        [JSON.stringify(choices)]
+      );
+    }
+  }
+
   public async listAnswersForResponse(responseId: string): Promise<AnswerRecord[]> {
     const result = await databasePool.query(
       `
@@ -349,9 +395,7 @@ export class ResponseRepository implements IResponseRepository {
         );
       }
 
-      for (const preparedAnswer of input?.preparedAnswers ?? []) {
-        await this.upsertPreparedAnswer(client, response.id, preparedAnswer);
-      }
+      await this.upsertPreparedAnswers(client, response.id, input?.preparedAnswers ?? []);
 
       if ((input?.hiddenQuestionIds ?? []).length > 0) {
         await client.query(
