@@ -47,7 +47,7 @@ const mapResponse = (row: Record<string, unknown>): SurveyTrackingResponseItem =
   invitationId: row.invitation_id ? String(row.invitation_id) : null,
   lastSavedAt: String(row.last_saved_at),
   respondentEmail: row.recipient_email_ciphertext ? String(row.recipient_email_ciphertext) : null,
-  respondentRole: row.respondent_role ? String(row.respondent_role) as SurveyTrackingResponseItem["respondentRole"] : null,
+  respondentRole: row.respondent_role ? String(row.respondent_role) : null,
   responseId: String(row.response_id),
   responseStatus: row.response_status as SurveyTrackingResponseItem["responseStatus"],
   sessionCreatedAt: String(row.session_created_at),

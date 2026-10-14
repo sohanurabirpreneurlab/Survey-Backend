@@ -15,6 +15,11 @@ export const getQuestionAccessRoles = (question: Question): SurveyAccessRole[] =
   return Array.isArray(roles) ? roles.filter(isSurveyAccessRole) : [];
 };
 
+export const getRawRoleFromMetadata = (metadata: Record<string, unknown> | null | undefined): string | null => {
+  const role = metadata?.userRole;
+  return typeof role === "string" && role.trim() ? role.trim() : null;
+};
+
 export const getRoleFromMetadata = (metadata: Record<string, unknown> | null | undefined): SurveyAccessRole | null => {
   const role = metadata?.userRole;
   return isSurveyAccessRole(role) ? role : null;

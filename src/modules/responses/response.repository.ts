@@ -3,7 +3,7 @@ import { ERROR_CODES } from "../../common/errors/error-codes";
 import { databasePool } from "../../config/database";
 import type { IResponseRepository } from "./response.repository.interface";
 import type { AnswerRecord, PreparedAnswerInput, ResponseScoreRecord, SurveyResponse } from "./response.types";
-import { getRoleFromMetadata } from "../surveys/survey-access";
+import { getRawRoleFromMetadata } from "../surveys/survey-access";
 
 type DatabaseClient = {
   query: (sql: string, values?: unknown[]) => Promise<{ rowCount?: number; rows: unknown[] }>;
@@ -216,7 +216,7 @@ export class ResponseRepository implements IResponseRepository {
         [input.invitationId]
       );
       const invitationMetadata = (invitationResult.rows[0] as Record<string, unknown> | undefined)?.metadata as Record<string, unknown> | undefined;
-      const role = getRoleFromMetadata(invitationMetadata);
+      const role = getRawRoleFromMetadata(invitationMetadata);
       metadata = role ? { userRole: role } : {};
     }
 

@@ -12,7 +12,7 @@ export const getSurveyCompletionStatusValidators = [
 ];
 
 export const resolveExternalSurveyInvitationValidators = [
-  body("role").optional().isIn(["admin", "business_owner", "super_admin"]).withMessage("role is invalid."),
+  body("role").optional().isString().trim().notEmpty().withMessage("role must be a non-empty string."),
   body("email").isEmail().withMessage("email must be a valid email address."),
   body("surveyIds")
     .isArray({ min: 1 })

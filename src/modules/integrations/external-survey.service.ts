@@ -12,12 +12,11 @@ import { ResponseRepository } from "../responses/response.repository";
 import type { IResponseRepository } from "../responses/response.repository.interface";
 import { SurveyRepository } from "../surveys/survey.repository";
 import type { ISurveyRepository } from "../surveys/survey.repository.interface";
-import type { SurveyAccessRole } from "../surveys/survey-access";
 
 export type ResolveExternalSurveyInvitationInput = {
   createdBy: string;
   email: string;
-  role?: SurveyAccessRole;
+  role?: string;
   requestId: string | null;
   surveyId: string;
 };
