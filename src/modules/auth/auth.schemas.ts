@@ -45,10 +45,7 @@ const loginPasswordRules = () =>
     .withMessage("password must be a string.")
     .bail()
     .isLength({ min: 1, max: 128 })
-    .withMessage("password must be between 1 and 128 characters long.")
-    .bail()
-    .matches(/^\S+$/)
-    .withMessage("password must not contain spaces.");
+    .withMessage("password must be between 1 and 128 characters long.");
 
 const fullNameRules = () =>
   body("fullName")
