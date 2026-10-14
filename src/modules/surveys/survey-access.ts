@@ -1,6 +1,6 @@
 import type { Question, SurveyVersionDefinition } from "./survey.types";
 
-export const SURVEY_ACCESS_ROLES = ["admin", "business_owner", "superadmin"] as const;
+export const SURVEY_ACCESS_ROLES = ["admin", "business_owner", "super_admin"] as const;
 export type SurveyAccessRole = (typeof SURVEY_ACCESS_ROLES)[number];
 
 export const isSurveyAccessRole = (value: unknown): value is SurveyAccessRole =>
