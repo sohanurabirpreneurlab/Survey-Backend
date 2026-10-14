@@ -57,6 +57,14 @@ export class AdminService {
     return this.adminRepository.suspendUser(input);
   }
 
+  public async deleteUser(input: { actorUserId: string; userId: string }) {
+    if (input.actorUserId === input.userId) {
+      throw new AppError(ERROR_CODES.forbidden, "You cannot permanently delete your own admin account.", 403);
+    }
+
+    return this.adminRepository.deleteUser(input);
+  }
+
   public async reactivateUser(input: { actorUserId: string; userId: string }) {
     return this.adminRepository.reactivateUser(input);
   }

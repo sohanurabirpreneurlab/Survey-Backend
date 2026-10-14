@@ -65,6 +65,31 @@ export const listSurveys = async (request: Request, response: Response): Promise
   });
 };
 
+export const listTrash = async (request: Request, response: Response): Promise<void> => {
+  const data = await surveyService.listTrash(
+    request.admin!.userId,
+    typeof request.query.organizationId === "string" ? request.query.organizationId : undefined,
+    parsePaginationNumber(request.query.page, 1),
+    parsePaginationNumber(request.query.limit, 20)
+  );
+  response.status(200).json({ success: true, message: "Trash surveys retrieved successfully.", data: data.items, meta: { pagination: { limit: data.limit, page: data.page, total: data.total, totalPages: data.totalPages }, requestId: request.requestId ?? null } });
+};
+
+export const softDeleteSurvey = async (request: Request, response: Response): Promise<void> => {
+  const survey = await surveyService.softDeleteSurvey(getParam(request.params.surveyId), request.admin!.userId);
+  sendSuccess(response, "Survey moved to Trash.", survey);
+};
+
+export const restoreSurvey = async (request: Request, response: Response): Promise<void> => {
+  const survey = await surveyService.restoreSurvey(getParam(request.params.surveyId), request.admin!.userId);
+  sendSuccess(response, "Survey restored successfully.", survey);
+};
+
+export const permanentlyDeleteSurvey = async (request: Request, response: Response): Promise<void> => {
+  await surveyService.permanentlyDeleteSurvey(getParam(request.params.surveyId), request.admin!.userId);
+  sendSuccess(response, "Survey permanently deleted.", null);
+};
+
 export const getSurvey = async (request: Request, response: Response): Promise<void> => {
   const survey = await surveyService.getSurvey(getParam(request.params.surveyId), request.admin!.userId);
   sendSuccess(response, "Survey retrieved successfully.", survey);

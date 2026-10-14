@@ -765,6 +765,31 @@ export class AdminRepository {
     });
   }
 
+  public async deleteUser(input: { actorUserId: string; userId: string }): Promise<void> {
+    await withTransaction(async (client) => {
+      const result = await client.query(
+        "delete from app_users where id = $1 returning id",
+        [input.userId]
+      );
+
+      if (!result.rowCount) {
+        throw new AppError(ERROR_CODES.userProfileNotFound, "User was not found.", 404);
+      }
+
+      await client.query("delete from organization_members where user_id = $1", [input.userId]);
+
+      await this.insertAuditLog(client, {
+        action: "USER_PERMANENTLY_DELETED",
+        actorUserId: input.actorUserId,
+        metadata: {},
+        result: "success",
+        targetId: input.userId,
+        targetLabel: input.userId,
+        targetType: "user"
+      });
+    });
+  }
+
   public async suspendUser(input: {
     actorUserId: string;
     reason: string | null;

@@ -36,6 +36,7 @@ import type {
 export interface ISurveyRepository {
   createSurveyWithInitialDraft(input: CreateSurveyInput): Promise<CreateSurveyResult>;
   findSurveyById(surveyId: string): Promise<Survey | null>;
+  findSurveyByIdIncludingDeleted(surveyId: string): Promise<Survey | null>;
   findSurveyByPublicSlug(publicSlug: string): Promise<Survey | null>;
   findSurveyBySlug(organizationId: string, slug: string): Promise<Survey | null>;
   listSurveys(input: ListSurveysInput): Promise<ListSurveysResult>;
@@ -52,6 +53,9 @@ export interface ISurveyRepository {
   updateDraftVersion(input: UpdateDraftVersionInput): Promise<SurveyVersion>;
   closeSurvey(input: UpdateSurveyLifecycleInput): Promise<Survey>;
   reopenSurvey(input: UpdateSurveyLifecycleInput): Promise<Survey>;
+  softDeleteSurvey(surveyId: string): Promise<Survey>;
+  restoreSurvey(surveyId: string): Promise<Survey>;
+  permanentlyDeleteSurvey(surveyId: string): Promise<void>;
   createSection(input: CreateSectionInput): Promise<SurveySection>;
   updateSection(input: UpdateSectionInput): Promise<SurveySection>;
   deleteSection(input: DeleteSectionInput): Promise<void>;

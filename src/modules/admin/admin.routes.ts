@@ -7,6 +7,7 @@ import {
   approveUser,
   createOrganization,
   deleteOrganization,
+  deleteUser,
   getDashboardSummary,
   getOrganizationDetail,
   getUserDetail,
@@ -48,6 +49,7 @@ adminRouter.get("/users/:userId", userIdParamValidator, validateRequest, asyncHa
 adminRouter.post("/users/:userId/approve", approveUserValidators, validateRequest, asyncHandler(approveUser));
 adminRouter.post("/users/:userId/reject", rejectUserValidators, validateRequest, asyncHandler(rejectUser));
 adminRouter.post("/users/:userId/suspend", suspendUserValidators, validateRequest, asyncHandler(suspendUser));
+adminRouter.delete("/users/:userId", userIdParamValidator, validateRequest, asyncHandler(deleteUser));
 adminRouter.post(
   "/users/:userId/reactivate",
   reactivateUserValidators,

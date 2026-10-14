@@ -73,6 +73,14 @@ export const suspendUser = async (request: Request, response: Response): Promise
   sendSuccess(response, "User suspended successfully.", null);
 };
 
+export const deleteUser = async (request: Request, response: Response): Promise<void> => {
+  await adminService.deleteUser({
+    actorUserId: request.admin!.userId,
+    userId: String(request.params.userId)
+  });
+  sendSuccess(response, "User permanently deleted successfully.", null);
+};
+
 export const reactivateUser = async (request: Request, response: Response): Promise<void> => {
   await adminService.reactivateUser({
     actorUserId: request.admin!.userId,

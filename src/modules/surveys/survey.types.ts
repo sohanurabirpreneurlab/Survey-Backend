@@ -249,6 +249,7 @@ export type SurveyShareInfo = {
 
 export type ListSurveysInput = {
   limit: number;
+  includeDeleted?: boolean;
   organizationId?: string;
   page: number;
 };

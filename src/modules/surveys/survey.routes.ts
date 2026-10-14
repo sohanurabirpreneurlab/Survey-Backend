@@ -26,6 +26,10 @@ import {
   getSurveyShare,
   getVersion,
   listSurveys,
+  listTrash,
+  permanentlyDeleteSurvey,
+  restoreSurvey,
+  softDeleteSurvey,
   listCalculatedScores,
   listVersions,
   publishDraft,
@@ -58,6 +62,9 @@ import {
   publishDraftValidators,
   questionIdParamValidator,
   deleteCalculatedScoreValidators,
+  deleteSurveyValidators,
+  permanentlyDeleteSurveyValidators,
+  restoreSurveyValidators,
   reorderOptionsValidators,
   reorderQuestionsValidators,
   reorderSectionsValidators,
@@ -82,7 +89,11 @@ surveyRouter.use("/:surveyId/results", resultRouter);
 
 surveyRouter.post("/", createSurveyValidators, validateRequest, asyncHandler(createSurvey));
 surveyRouter.get("/", listSurveysValidators, validateRequest, asyncHandler(listSurveys));
+surveyRouter.get("/trash", listSurveysValidators, validateRequest, asyncHandler(listTrash));
 surveyRouter.get("/:surveyId", surveyIdParamValidator, validateRequest, asyncHandler(getSurvey));
+surveyRouter.delete("/:surveyId", deleteSurveyValidators, validateRequest, asyncHandler(softDeleteSurvey));
+surveyRouter.post("/:surveyId/restore", restoreSurveyValidators, validateRequest, asyncHandler(restoreSurvey));
+surveyRouter.delete("/:surveyId/permanent", permanentlyDeleteSurveyValidators, validateRequest, asyncHandler(permanentlyDeleteSurvey));
 surveyRouter.get("/:surveyId/share", surveyIdParamValidator, validateRequest, asyncHandler(getSurveyShare));
 surveyRouter.patch("/:surveyId", updateSurveyValidators, validateRequest, asyncHandler(updateSurvey));
 

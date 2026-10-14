@@ -108,11 +108,12 @@ export class SurveyService {
     userId: string,
     organizationId?: string,
     page = 1,
-    limit = 20
+    limit = 20,
+    includeDeleted = false
   ): Promise<{ items: SurveySummaryWithAccess[]; limit: number; page: number; total: number; totalPages: number }> {
     const [actorContext, result] = await Promise.all([
       this.getActorContext(userId),
-      this.surveyRepository.listSurveys({ limit, organizationId, page })
+      this.surveyRepository.listSurveys({ includeDeleted, limit, organizationId, page })
     ]);
 
     return {
@@ -122,6 +123,37 @@ export class SurveyService {
         access: this.buildSurveyAccess(survey, actorContext)
       }))
     };
+  }
+
+  public async listTrash(userId: string, organizationId?: string, page = 1, limit = 20) {
+    return this.listSurveys(userId, organizationId, page, limit, true);
+  }
+
+  public async softDeleteSurvey(surveyId: string, userId: string): Promise<Survey> {
+    const survey = await this.requireSurvey(surveyId);
+    const actorContext = await this.getActorContext(userId);
+    this.assertSurveyDeleteAccess(survey, actorContext);
+    return this.surveyRepository.softDeleteSurvey(survey.id);
+  }
+
+  public async restoreSurvey(surveyId: string, userId: string): Promise<Survey> {
+    const survey = await this.surveyRepository.findSurveyByIdIncludingDeleted(surveyId);
+    if (!survey || !survey.deletedAt) {
+      throw new AppError(ERROR_CODES.surveyNotFound, "Survey was not found in Trash.", 404);
+    }
+    const actorContext = await this.getActorContext(userId);
+    this.assertSurveyDeleteAccess(survey, actorContext);
+    return this.surveyRepository.restoreSurvey(survey.id);
+  }
+
+  public async permanentlyDeleteSurvey(surveyId: string, userId: string): Promise<void> {
+    const survey = await this.surveyRepository.findSurveyByIdIncludingDeleted(surveyId);
+    if (!survey || !survey.deletedAt) {
+      throw new AppError(ERROR_CODES.surveyNotFound, "Survey was not found in Trash.", 404);
+    }
+    const actorContext = await this.getActorContext(userId);
+    this.assertSurveyDeleteAccess(survey, actorContext);
+    await this.surveyRepository.permanentlyDeleteSurvey(survey.id);
   }
 
   public async getSurvey(surveyId: string, userId: string): Promise<SurveyWithAccess> {
@@ -625,6 +657,16 @@ export class SurveyService {
     }
 
     await this.surveyRepository.deleteCalculatedScore(calculatedScoreId);
+  }
+
+  private assertSurveyDeleteAccess(survey: Survey, actorContext: SurveyActorContext): void {
+    if (actorContext.isPlatformAdmin) {
+      return;
+    }
+    const membership = actorContext.membershipsByOrganizationId.get(survey.organizationId);
+    if (!membership?.permissions.canDeleteSurvey) {
+      throw new AppError(ERROR_CODES.insufficientOrganizationRole, "Your role does not allow survey deletion.", 403);
+    }
   }
 
   private async requireSurvey(surveyId: string): Promise<Survey> {

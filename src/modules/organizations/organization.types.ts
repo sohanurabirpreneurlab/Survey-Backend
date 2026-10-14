@@ -45,5 +45,6 @@ export type OrganizationPermissions = {
   canPublishSurvey: boolean;
   canManageMembers: boolean;
   canCloseSurvey: boolean;
+  canDeleteSurvey: boolean;
   canReadSurvey: boolean;
 };

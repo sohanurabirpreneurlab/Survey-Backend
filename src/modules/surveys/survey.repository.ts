@@ -421,6 +421,11 @@ export class SurveyRepository implements ISurveyRepository {
     return result.rowCount ? mapSurvey(result.rows[0] as Record<string, unknown>) : null;
   }
 
+  public async findSurveyByIdIncludingDeleted(surveyId: string): Promise<Survey | null> {
+    const result = await databasePool.query("select * from surveys where id = $1", [surveyId]);
+    return result.rowCount ? mapSurvey(result.rows[0] as Record<string, unknown>) : null;
+  }
+
   public async findSurveyByPublicSlug(publicSlug: string): Promise<Survey | null> {
     const result = await databasePool.query(
       "select * from surveys where public_slug = $1 and deleted_at is null",
@@ -439,7 +444,8 @@ export class SurveyRepository implements ISurveyRepository {
 
   public async listSurveys(input: ListSurveysInput): Promise<ListSurveysResult> {
     const offset = (input.page - 1) * input.limit;
-    const filterSql = input.organizationId ? "where s.organization_id = $1 and s.deleted_at is null" : "where s.deleted_at is null";
+    const deletedFilter = input.includeDeleted ? "s.deleted_at is not null" : "s.deleted_at is null";
+    const filterSql = input.organizationId ? `where s.organization_id = $1 and ${deletedFilter}` : `where ${deletedFilter}`;
     const params = input.organizationId ? [input.organizationId, input.limit, offset] : [input.limit, offset];
     const limitIndex = input.organizationId ? 2 : 1;
     const offsetIndex = input.organizationId ? 3 : 2;
@@ -787,6 +793,26 @@ export class SurveyRepository implements ISurveyRepository {
       [input.surveyId]
     );
     return mapSurvey(result.rows[0] as Record<string, unknown>);
+  }
+
+  public async softDeleteSurvey(surveyId: string): Promise<Survey> {
+    const result = await databasePool.query(
+      "update surveys set deleted_at = now(), updated_at = now() where id = $1 and deleted_at is null returning *",
+      [surveyId]
+    );
+    return mapSurvey(result.rows[0] as Record<string, unknown>);
+  }
+
+  public async restoreSurvey(surveyId: string): Promise<Survey> {
+    const result = await databasePool.query(
+      "update surveys set deleted_at = null, updated_at = now() where id = $1 and deleted_at is not null returning *",
+      [surveyId]
+    );
+    return mapSurvey(result.rows[0] as Record<string, unknown>);
+  }
+
+  public async permanentlyDeleteSurvey(surveyId: string): Promise<void> {
+    await databasePool.query("delete from surveys where id = $1 and deleted_at is not null", [surveyId]);
   }
 
   public async createSection(input: CreateSectionInput): Promise<SurveySection> {

@@ -3,6 +3,7 @@ import type { OrganizationMembership, OrganizationPermissions, OrganizationRole 
 const rolePermissions: Record<OrganizationRole, OrganizationPermissions> = {
   owner: {
     canCloseSurvey: true,
+    canDeleteSurvey: true,
     canCreateSurvey: true,
     canEditDraft: true,
     canManageMembers: true,
@@ -11,6 +12,7 @@ const rolePermissions: Record<OrganizationRole, OrganizationPermissions> = {
   },
   admin: {
     canCloseSurvey: true,
+    canDeleteSurvey: true,
     canCreateSurvey: true,
     canEditDraft: true,
     canManageMembers: false,
@@ -19,6 +21,7 @@ const rolePermissions: Record<OrganizationRole, OrganizationPermissions> = {
   },
   editor: {
     canCloseSurvey: false,
+    canDeleteSurvey: false,
     canCreateSurvey: true,
     canEditDraft: true,
     canManageMembers: false,
@@ -27,6 +30,7 @@ const rolePermissions: Record<OrganizationRole, OrganizationPermissions> = {
   },
   analyst: {
     canCloseSurvey: false,
+    canDeleteSurvey: false,
     canCreateSurvey: false,
     canEditDraft: false,
     canManageMembers: false,
@@ -35,6 +39,7 @@ const rolePermissions: Record<OrganizationRole, OrganizationPermissions> = {
   },
   viewer: {
     canCloseSurvey: false,
+    canDeleteSurvey: false,
     canCreateSurvey: false,
     canEditDraft: false,
     canManageMembers: false,

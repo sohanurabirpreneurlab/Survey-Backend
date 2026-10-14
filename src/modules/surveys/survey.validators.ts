@@ -46,6 +46,10 @@ export const listSurveysValidators = [
   query("limit").optional().isInt({ min: 1, max: 100 }).withMessage("limit must be between 1 and 100.")
 ];
 
+export const deleteSurveyValidators = [...surveyIdParamValidator];
+export const restoreSurveyValidators = [...surveyIdParamValidator];
+export const permanentlyDeleteSurveyValidators = [...surveyIdParamValidator];
+
 export const updateSurveyValidators = [
   ...surveyIdParamValidator,
   body("slug").isString().trim().notEmpty().withMessage("slug is required."),
