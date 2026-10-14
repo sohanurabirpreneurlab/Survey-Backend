@@ -12,7 +12,7 @@ import type { Survey } from "../surveys/survey.types";
 import { RespondentRepository } from "./respondent.repository";
 import type { IRespondentRepository } from "./respondent.repository.interface";
 import type { PublicSurvey } from "./respondent.types";
-import { getRoleFromMetadata } from "../surveys/survey-access";
+import { canAccessQuestion, getRoleFromMetadata } from "../surveys/survey-access";
 import type { SurveyAccessRole } from "../surveys/survey-access";
 
 export class RespondentService {
@@ -141,13 +141,7 @@ export class RespondentService {
       throw new AppError(ERROR_CODES.versionNotFound, "Survey version was not found.", 404);
     }
 
-    const visibleQuestions = definition.questions.filter((question) => {
-      const access = question.settings?.access;
-      const roles = access && typeof access === "object" && !Array.isArray(access)
-        ? (access as { roles?: unknown }).roles
-        : undefined;
-      return !Array.isArray(roles) || roles.length === 0 || (role !== null && roles.includes(role));
-    });
+    const visibleQuestions = definition.questions.filter((question) => canAccessQuestion(question, role));
     const visibleQuestionIds = new Set(visibleQuestions.map((question) => question.id));
 
     return {

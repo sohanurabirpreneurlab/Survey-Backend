@@ -152,8 +152,8 @@ export class InvitationRepository implements IInvitationRepository {
 
       if (existingResult.rowCount) {
         const updatedResult = await client.query(
-          "update survey_invitations set metadata = metadata || $2::jsonb, updated_at = now() where id = $1 returning *",
-          [String((existingResult.rows[0] as Record<string, unknown>).id), JSON.stringify(input.metadata)]
+          "update survey_invitations set survey_version_id = $2, metadata = (metadata - 'userRole' - 'role') || $3::jsonb, updated_at = now() where id = $1 returning *",
+          [String((existingResult.rows[0] as Record<string, unknown>).id), input.surveyVersionId, JSON.stringify(input.metadata)]
         );
         await client.query("commit");
         return {
