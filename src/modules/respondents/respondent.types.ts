@@ -26,6 +26,11 @@ export type PublicSurveyQuestion = {
 };
 
 export type PublicSurvey = {
+  respondentIdentity: {
+    email: string | null;
+    role: string | null;
+    isAnonymous: boolean;
+  };
   calculatedScores: Array<{
     calculationType: string;
     decimalPlaces: number;

@@ -1,6 +1,7 @@
 import { AppError } from "../../common/errors/app-error";
 import { ERROR_CODES } from "../../common/errors/error-codes";
 import { createSecureToken, hashToken } from "../../common/security/token-hash";
+import { decryptEmail } from "../../common/security/email-protection";
 import { env } from "../../config/env";
 import { InvitationRepository } from "../invitations/invitation.repository";
 import type { IInvitationRepository } from "../invitations/invitation.repository.interface";
@@ -12,7 +13,7 @@ import type { Survey } from "../surveys/survey.types";
 import { RespondentRepository } from "./respondent.repository";
 import type { IRespondentRepository } from "./respondent.repository.interface";
 import type { PublicSurvey } from "./respondent.types";
-import { canAccessQuestion, getRoleFromMetadata } from "../surveys/survey-access";
+import { filterDefinitionForRole, getRawRoleFromMetadata, getRoleFromMetadata } from "../surveys/survey-access";
 import type { SurveyAccessRole } from "../surveys/survey-access";
 
 export class RespondentService {
@@ -43,10 +44,12 @@ export class RespondentService {
 
     const survey = await this.requireAccessibleSurvey(invitation.surveyId, "invitation");
     this.assertInvitationUsable(invitation);
+    const role = getRoleFromMetadata(invitation.metadata);
     const surveyDefinition = await this.buildPublicSurvey(
       survey.publicSlug,
       invitation.surveyVersionId,
-      getRoleFromMetadata(invitation.metadata)
+      role,
+      { email: invitation.recipientEmailCiphertext ? decryptEmail(invitation.recipientEmailCiphertext) : null, role: getRawRoleFromMetadata(invitation.metadata), isAnonymous: false }
     );
 
     const rawSessionToken = createSecureToken();
@@ -92,7 +95,7 @@ export class RespondentService {
       throw new AppError(ERROR_CODES.surveyNotPublished, "Survey is not available.", 404);
     }
 
-    const surveyDefinition = await this.buildPublicSurvey(survey.publicSlug, survey.publishedVersionId);
+    const surveyDefinition = await this.buildPublicSurvey(survey.publicSlug, survey.publishedVersionId, null, { email: null, role: null, isAnonymous: true });
     const rawSessionToken = createSecureToken();
     const expiresAt = new Date(Date.now() + env.respondentSessionTtlMinutes * 60 * 1000).toISOString();
 
@@ -127,25 +130,36 @@ export class RespondentService {
 
     await this.validateSurveyAvailability(survey);
     const invitation = input.invitationId ? await this.invitationRepository.findInvitationById(input.invitationId) : null;
+    const role = getRoleFromMetadata(invitation?.metadata);
     return this.buildPublicSurvey(
       survey.publicSlug,
       input.surveyVersionId,
-      getRoleFromMetadata(invitation?.metadata)
+      role,
+      invitation
+        ? { email: invitation.recipientEmailCiphertext ? decryptEmail(invitation.recipientEmailCiphertext) : null, role: getRawRoleFromMetadata(invitation.metadata), isAnonymous: false }
+        : { email: null, role: null, isAnonymous: true }
     );
   }
 
-  private async buildPublicSurvey(publicSlug: string, surveyVersionId: string, role: SurveyAccessRole | null = null): Promise<PublicSurvey> {
+  private async buildPublicSurvey(
+    publicSlug: string,
+    surveyVersionId: string,
+    role: SurveyAccessRole | null = null,
+    respondentIdentity: PublicSurvey["respondentIdentity"] = { email: null, role: null, isAnonymous: true }
+  ): Promise<PublicSurvey> {
     const definition = await this.surveyRepository.getVersionDefinition(surveyVersionId);
 
     if (!definition) {
       throw new AppError(ERROR_CODES.versionNotFound, "Survey version was not found.", 404);
     }
 
-    const visibleQuestions = definition.questions.filter((question) => canAccessQuestion(question, role));
+    const roleScopedDefinition = filterDefinitionForRole(definition, role);
+    const visibleQuestions = roleScopedDefinition.questions;
     const visibleQuestionIds = new Set(visibleQuestions.map((question) => question.id));
 
     return {
-      calculatedScores: definition.calculatedScores.map((score) => ({
+      respondentIdentity,
+      calculatedScores: roleScopedDefinition.calculatedScores.map((score) => ({
         calculationType: score.calculationType,
         decimalPlaces: score.decimalPlaces,
         id: score.id,
@@ -167,7 +181,7 @@ export class RespondentService {
         thresholdValue: score.thresholdValue
       })),
       description: definition.version.description,
-      options: definition.options.filter((option) => visibleQuestionIds.has(option.questionId)).map((option) => ({
+      options: roleScopedDefinition.options.filter((option) => visibleQuestionIds.has(option.questionId)).map((option) => ({
         id: option.id,
         label: option.label,
         position: option.position,

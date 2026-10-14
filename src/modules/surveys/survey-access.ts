@@ -6,13 +6,15 @@ export type SurveyAccessRole = (typeof SURVEY_ACCESS_ROLES)[number];
 export const isSurveyAccessRole = (value: unknown): value is SurveyAccessRole =>
   typeof value === "string" && (SURVEY_ACCESS_ROLES as readonly string[]).includes(value);
 
-export const getQuestionAccessRoles = (question: Question): SurveyAccessRole[] => {
+export const getQuestionAccessRoles = (question: Question): string[] => {
   const access = question.settings?.access;
   const roles = access && typeof access === "object" && !Array.isArray(access)
     ? (access as { roles?: unknown }).roles
     : undefined;
 
-  return Array.isArray(roles) ? roles.filter(isSurveyAccessRole) : [];
+  return Array.isArray(roles)
+    ? roles.filter((value): value is string => typeof value === "string" && value.trim().length > 0).map((value) => value.trim().toLowerCase())
+    : [];
 };
 
 export const getRawRoleFromMetadata = (metadata: Record<string, unknown> | null | undefined): string | null => {
