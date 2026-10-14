@@ -46,6 +46,7 @@ export const resolveSurveyInvitation = async (request: Request, response: Respon
       externalSurveyService.resolveInvitation({
         createdBy: request.integration!.userId,
         email: request.body.email,
+        role: request.body.role,
         requestId: request.requestId ?? null,
         surveyId
       })

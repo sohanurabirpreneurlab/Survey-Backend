@@ -12,10 +12,12 @@ import { ResponseRepository } from "../responses/response.repository";
 import type { IResponseRepository } from "../responses/response.repository.interface";
 import { SurveyRepository } from "../surveys/survey.repository";
 import type { ISurveyRepository } from "../surveys/survey.repository.interface";
+import type { SurveyAccessRole } from "../surveys/survey-access";
 
 export type ResolveExternalSurveyInvitationInput = {
   createdBy: string;
   email: string;
+  role?: SurveyAccessRole;
   requestId: string | null;
   surveyId: string;
 };
@@ -138,7 +140,7 @@ export class ExternalSurveyService {
       createdBy: integrationUser.userId,
       expiresAt: null,
       maxResponses: 1,
-      metadata: { source: "external_integration" },
+      metadata: { source: "external_integration", ...(input.role ? { userRole: input.role } : {}) },
       recipientEmail: input.email,
       reuseExistingInvitation: true,
       surveyId: survey.id,

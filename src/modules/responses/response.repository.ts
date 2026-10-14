@@ -3,6 +3,7 @@ import { ERROR_CODES } from "../../common/errors/error-codes";
 import { databasePool } from "../../config/database";
 import type { IResponseRepository } from "./response.repository.interface";
 import type { AnswerRecord, PreparedAnswerInput, ResponseScoreRecord, SurveyResponse } from "./response.types";
+import { getRoleFromMetadata } from "../surveys/survey-access";
 
 type DatabaseClient = {
   query: (sql: string, values?: unknown[]) => Promise<{ rowCount?: number; rows: unknown[] }>;
@@ -207,13 +208,25 @@ export class ResponseRepository implements IResponseRepository {
     surveyId: string;
     surveyVersionId: string;
   }): Promise<SurveyResponse> {
+    let metadata: Record<string, unknown> = {};
+
+    if (input.invitationId) {
+      const invitationResult = await databasePool.query(
+        "select metadata from survey_invitations where id = $1",
+        [input.invitationId]
+      );
+      const invitationMetadata = (invitationResult.rows[0] as Record<string, unknown> | undefined)?.metadata as Record<string, unknown> | undefined;
+      const role = getRoleFromMetadata(invitationMetadata);
+      metadata = role ? { userRole: role } : {};
+    }
+
     const result = await databasePool.query(
       `
-        insert into survey_responses (survey_id, survey_version_id, invitation_id, respondent_session_id, status)
-        values ($1, $2, $3, $4, 'in_progress')
+        insert into survey_responses (survey_id, survey_version_id, invitation_id, respondent_session_id, status, metadata)
+        values ($1, $2, $3, $4, 'in_progress', $5::jsonb)
         returning *
       `,
-      [input.surveyId, input.surveyVersionId, input.invitationId, input.respondentSessionId]
+      [input.surveyId, input.surveyVersionId, input.invitationId, input.respondentSessionId, JSON.stringify(metadata)]
     );
     return mapResponse(result.rows[0] as Record<string, unknown>);
   }

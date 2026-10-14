@@ -12,6 +12,8 @@ import type { Survey } from "../surveys/survey.types";
 import { RespondentRepository } from "./respondent.repository";
 import type { IRespondentRepository } from "./respondent.repository.interface";
 import type { PublicSurvey } from "./respondent.types";
+import { getRoleFromMetadata } from "../surveys/survey-access";
+import type { SurveyAccessRole } from "../surveys/survey-access";
 
 export class RespondentService {
   public constructor(
@@ -41,7 +43,11 @@ export class RespondentService {
 
     const survey = await this.requireAccessibleSurvey(invitation.surveyId, "invitation");
     this.assertInvitationUsable(invitation);
-    const surveyDefinition = await this.buildPublicSurvey(survey.publicSlug, invitation.surveyVersionId);
+    const surveyDefinition = await this.buildPublicSurvey(
+      survey.publicSlug,
+      invitation.surveyVersionId,
+      getRoleFromMetadata(invitation.metadata)
+    );
 
     const rawSessionToken = createSecureToken();
     const expiresAt = new Date(Date.now() + env.respondentSessionTtlMinutes * 60 * 1000).toISOString();
@@ -111,6 +117,7 @@ export class RespondentService {
   public async getSurveyForSession(input: {
     surveyId: string;
     surveyVersionId: string;
+    invitationId?: string | null;
   }): Promise<PublicSurvey> {
     const survey = await this.surveyRepository.findSurveyById(input.surveyId);
 
@@ -119,15 +126,29 @@ export class RespondentService {
     }
 
     await this.validateSurveyAvailability(survey);
-    return this.buildPublicSurvey(survey.publicSlug, input.surveyVersionId);
+    const invitation = input.invitationId ? await this.invitationRepository.findInvitationById(input.invitationId) : null;
+    return this.buildPublicSurvey(
+      survey.publicSlug,
+      input.surveyVersionId,
+      getRoleFromMetadata(invitation?.metadata)
+    );
   }
 
-  private async buildPublicSurvey(publicSlug: string, surveyVersionId: string): Promise<PublicSurvey> {
+  private async buildPublicSurvey(publicSlug: string, surveyVersionId: string, role: SurveyAccessRole | null = null): Promise<PublicSurvey> {
     const definition = await this.surveyRepository.getVersionDefinition(surveyVersionId);
 
     if (!definition) {
       throw new AppError(ERROR_CODES.versionNotFound, "Survey version was not found.", 404);
     }
+
+    const visibleQuestions = definition.questions.filter((question) => {
+      const access = question.settings?.access;
+      const roles = access && typeof access === "object" && !Array.isArray(access)
+        ? (access as { roles?: unknown }).roles
+        : undefined;
+      return !Array.isArray(roles) || roles.length === 0 || (role !== null && roles.includes(role));
+    });
+    const visibleQuestionIds = new Set(visibleQuestions.map((question) => question.id));
 
     return {
       calculatedScores: definition.calculatedScores.map((score) => ({
@@ -152,7 +173,7 @@ export class RespondentService {
         thresholdValue: score.thresholdValue
       })),
       description: definition.version.description,
-      options: definition.options.map((option) => ({
+      options: definition.options.filter((option) => visibleQuestionIds.has(option.questionId)).map((option) => ({
         id: option.id,
         label: option.label,
         position: option.position,
@@ -162,7 +183,7 @@ export class RespondentService {
         stableKey: option.stableKey,
         value: option.value
       })),
-      questions: definition.questions.map((question) => ({
+      questions: visibleQuestions.map((question) => ({
         description: question.description,
         displayLogic: question.displayLogic,
         id: question.id,

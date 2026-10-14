@@ -3,6 +3,7 @@ import { ERROR_CODES } from "../../common/errors/error-codes";
 import { SurveyRepository } from "../surveys/survey.repository";
 import type { ISurveyRepository } from "../surveys/survey.repository.interface";
 import type { Question, QuestionOption } from "../surveys/survey.types";
+import { canAccessQuestion, filterDefinitionForRole, getRoleFromMetadata } from "../surveys/survey-access";
 import { validateAnswerValue } from "./answer-validator";
 import { IdempotencyService } from "./idempotency.service";
 import { ResponseRepository } from "./response.repository";
@@ -75,6 +76,10 @@ export class ResponseService {
       );
     }
 
+    if (!canAccessQuestion(question, getRoleFromMetadata(response.metadata))) {
+      throw new AppError(ERROR_CODES.respondentAccessDenied, "Question is not available for this respondent.", 403);
+    }
+
     const options = await this.surveyRepository.listOptionsByQuestion(question.id);
     const normalizedAnswer = validateAnswerValue(question, [], options, input.value);
     const scoreSnapshot = this.resolveAnswerScoreSnapshot(question.type, normalizedAnswer.optionIds, normalizedAnswer.valueNumber, options);
@@ -129,13 +134,14 @@ export class ResponseService {
       throw new AppError(ERROR_CODES.versionNotFound, "Survey version was not found.", 404);
     }
 
+    const roleScopedDefinition = filterDefinitionForRole(definition, getRoleFromMetadata(response.metadata));
     const answers = await this.responseRepository.listAnswersForResponse(response.id);
-    const initialScores = this.scoreCalculationService.calculate(definition, answers);
-    const initialVisibility = this.surveyVisibilityService.resolve(definition, initialScores);
+    const initialScores = this.scoreCalculationService.calculate(roleScopedDefinition, answers);
+    const initialVisibility = this.surveyVisibilityService.resolve(roleScopedDefinition, initialScores);
     const visibleAnswers = answers.filter((answer) => initialVisibility.visibleQuestionIds.includes(answer.questionId));
-    const responseScores = this.scoreCalculationService.calculate(definition, visibleAnswers);
-    const visibility = this.surveyVisibilityService.resolve(definition, responseScores);
-    const visibleRequiredQuestionIds = definition.questions
+    const responseScores = this.scoreCalculationService.calculate(roleScopedDefinition, visibleAnswers);
+    const visibility = this.surveyVisibilityService.resolve(roleScopedDefinition, responseScores);
+    const visibleRequiredQuestionIds = roleScopedDefinition.questions
       .filter((question) => question.required && visibility.visibleQuestionIds.includes(question.id))
       .map((question) => question.id);
 
@@ -183,13 +189,14 @@ export class ResponseService {
       throw new AppError(ERROR_CODES.versionNotFound, "Survey version was not found.", 404);
     }
 
-    const preparedAnswers = this.prepareSubmittedAnswers(definition.questions, definition.options, input.answers);
-    const initialScores = this.scoreCalculationService.calculate(definition, preparedAnswers);
-    const initialVisibility = this.surveyVisibilityService.resolve(definition, initialScores);
+    const roleScopedDefinition = filterDefinitionForRole(definition, getRoleFromMetadata(response.metadata));
+    const preparedAnswers = this.prepareSubmittedAnswers(roleScopedDefinition.questions, roleScopedDefinition.options, input.answers);
+    const initialScores = this.scoreCalculationService.calculate(roleScopedDefinition, preparedAnswers);
+    const initialVisibility = this.surveyVisibilityService.resolve(roleScopedDefinition, initialScores);
     const visibleAnswers = preparedAnswers.filter((answer) => initialVisibility.visibleQuestionIds.includes(answer.questionId));
-    const responseScores = this.scoreCalculationService.calculate(definition, visibleAnswers);
-    const visibility = this.surveyVisibilityService.resolve(definition, responseScores);
-    const visibleRequiredQuestionIds = definition.questions
+    const responseScores = this.scoreCalculationService.calculate(roleScopedDefinition, visibleAnswers);
+    const visibility = this.surveyVisibilityService.resolve(roleScopedDefinition, responseScores);
+    const visibleRequiredQuestionIds = roleScopedDefinition.questions
       .filter((question) => question.required && visibility.visibleQuestionIds.includes(question.id))
       .map((question) => question.id);
     const finalVisibleAnswers = visibleAnswers.filter((answer) => visibility.visibleQuestionIds.includes(answer.questionId));

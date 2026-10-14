@@ -47,6 +47,7 @@ const mapResponse = (row: Record<string, unknown>): SurveyTrackingResponseItem =
   invitationId: row.invitation_id ? String(row.invitation_id) : null,
   lastSavedAt: String(row.last_saved_at),
   respondentEmail: row.recipient_email_ciphertext ? String(row.recipient_email_ciphertext) : null,
+  respondentRole: row.respondent_role ? String(row.respondent_role) as SurveyTrackingResponseItem["respondentRole"] : null,
   responseId: String(row.response_id),
   responseStatus: row.response_status as SurveyTrackingResponseItem["responseStatus"],
   sessionCreatedAt: String(row.session_created_at),
@@ -171,7 +172,8 @@ export class SurveyTrackingRepository implements ISurveyTrackingRepository {
           rs.id as session_id,
           rs.status as session_status,
           rs.created_at as session_created_at,
-          si.recipient_email_ciphertext
+          si.recipient_email_ciphertext,
+          coalesce(sr.metadata->>'userRole', si.metadata->>'userRole') as respondent_role
         from survey_responses sr
         inner join respondent_sessions rs on rs.id = sr.respondent_session_id
         left join survey_invitations si on si.id = sr.invitation_id
@@ -226,6 +228,7 @@ export class SurveyTrackingRepository implements ISurveyTrackingRepository {
           rs.status as session_status,
           rs.created_at as session_created_at,
           si.recipient_email_ciphertext,
+          coalesce(sr.metadata->>'userRole', si.metadata->>'userRole') as respondent_role,
           s.organization_id,
           s.access_mode,
           s.status as survey_status,

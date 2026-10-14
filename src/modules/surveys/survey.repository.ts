@@ -1113,6 +1113,27 @@ export class SurveyRepository implements ISurveyRepository {
 
   public async reorderOptions(input: ReorderOptionsInput): Promise<QuestionOption[]> {
     await withTransaction(async (client) => {
+      // The (question_id, position) constraint is immediate. Move every
+      // option out of the way first so swapping two occupied positions does
+      // not temporarily create a duplicate position.
+      await client.query("select id from questions where id = $1 for update", [input.questionId]);
+      const positions = await client.query(
+        "select position from question_options where question_id = $1",
+        [input.questionId]
+      );
+      const temporaryStart = Math.max(
+        -1,
+        ...positions.rows.map((row) => Number((row as { position: number }).position)),
+        ...input.items.map((item) => item.position)
+      ) + 1;
+
+      for (const [index, item] of input.items.entries()) {
+        await client.query(
+          "update question_options set position = $2, updated_at = now() where id = $1 and question_id = $3",
+          [item.optionId, temporaryStart + index, input.questionId]
+        );
+      }
+
       for (const item of input.items) {
         await client.query(
           "update question_options set position = $2, updated_at = now() where id = $1 and question_id = $3",

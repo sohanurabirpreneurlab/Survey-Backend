@@ -1,5 +1,6 @@
 import type { PaginatedResult } from "../../common/utils/pagination";
 import type { SurveyAccessMode, SurveyStatus, SurveyVersionDefinition } from "../surveys/survey.types";
+import type { SurveyAccessRole } from "../surveys/survey-access";
 
 export type SurveyTrackingSummary = {
   accessMode: SurveyAccessMode;
@@ -41,6 +42,7 @@ export type SurveyTrackingResponseItem = {
   invitationId: string | null;
   lastSavedAt: string;
   respondentEmail: string | null;
+  respondentRole: SurveyAccessRole | null;
   responseId: string;
   responseStatus: "in_progress" | "submitted" | "invalidated" | "deleted";
   sessionCreatedAt: string;

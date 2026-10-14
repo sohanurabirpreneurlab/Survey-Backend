@@ -23,7 +23,8 @@ export const logoutRespondent = async (request: Request, response: Response): Pr
 export const getRespondentSurvey = async (request: Request, response: Response): Promise<void> => {
   const survey = await respondentService.getSurveyForSession({
     surveyId: request.respondent!.surveyId,
-    surveyVersionId: request.respondent!.surveyVersionId
+    surveyVersionId: request.respondent!.surveyVersionId,
+    invitationId: request.respondent!.invitationId
   });
   sendSuccess(response, "Survey retrieved successfully.", survey);
 };
