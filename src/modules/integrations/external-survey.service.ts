@@ -168,8 +168,8 @@ export class ExternalSurveyService {
     }
     const membership = await this.organizationService.requireOrganizationMembership(survey.organizationId, integrationUser.userId);
     this.organizationService.requireSurveyPublishPermission(membership);
-    if (survey.accessMode !== "invite_only") {
-      throw new AppError(ERROR_CODES.surveyInviteOnlyRequired, "Survey must be invite-only for this integration flow.", 409);
+    if (survey.accessMode !== "invite_only" && survey.accessMode !== "hybrid") {
+      throw new AppError(ERROR_CODES.surveyInviteOnlyRequired, "Survey must allow invitation access for this integration flow.", 409);
     }
     if (survey.status === "closed" || (survey.closesAt && new Date(survey.closesAt).getTime() <= Date.now())) {
       throw new AppError(ERROR_CODES.surveyClosed, "Survey is closed.", 409);

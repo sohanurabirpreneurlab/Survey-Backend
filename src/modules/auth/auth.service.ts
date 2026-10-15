@@ -22,6 +22,64 @@ import type {
 } from "./auth.types";
 
 const normalizeEmail = (email: string): string => email.trim().toLowerCase();
+
+type RegistrationError = Error & { code?: string };
+
+const buildRegistrationFailure = (error: unknown): AppError => {
+  const code = error instanceof Error && "code" in error
+    ? String((error as RegistrationError).code ?? "")
+    : "";
+
+  switch (code) {
+    case "42P01":
+      return new AppError(
+        ERROR_CODES.databaseError,
+        "Registration failed because the production database schema is missing required tables. Run the pending migrations.",
+        500
+      );
+    case "42703":
+      return new AppError(
+        ERROR_CODES.databaseError,
+        "Registration failed because the production database schema is missing a required column. Run the pending migrations.",
+        500
+      );
+    case "42501":
+      return new AppError(
+        ERROR_CODES.databaseError,
+        "Registration failed because the production database user does not have permission to create accounts.",
+        500
+      );
+    case "23503":
+      return new AppError(
+        ERROR_CODES.organizationNotFound,
+        "The selected organization is invalid or is not available in the production database.",
+        404
+      );
+    case "22P02":
+      return new AppError(
+        ERROR_CODES.validationError,
+        "The organization ID format is invalid.",
+        400
+      );
+    case "ECONNREFUSED":
+    case "ECONNRESET":
+    case "ETIMEDOUT":
+    case "57P01":
+    case "57P02":
+    case "57P03":
+      return new AppError(
+        ERROR_CODES.databaseError,
+        "Registration failed because the production database is temporarily unavailable.",
+        503
+      );
+    default:
+      return new AppError(
+        ERROR_CODES.registrationFailed,
+        "Registration failed due to an unexpected server or database error. Check the production server logs using the request ID.",
+        500
+      );
+  }
+};
 const buildRefreshExpiry = (): string =>
   new Date(Date.now() + env.authRefreshTokenTtlDays * 24 * 60 * 60 * 1000).toISOString();
 const buildAccessExpiryUnix = (): number =>
@@ -117,14 +175,11 @@ export class AuthService {
       }
 
       logger.error("auth.registration_failed", {
-        error: error instanceof Error ? error.message : "unknown"
+        error: error instanceof Error ? error.message : "unknown",
+        errorCode: error instanceof Error && "code" in error ? String((error as RegistrationError).code ?? "") : "unknown"
       });
 
-      throw new AppError(
-        ERROR_CODES.registrationFailed,
-        "Registration could not be completed. Try signing in or resetting your password.",
-        400
-      );
+      throw buildRegistrationFailure(error);
     }
   }
 
