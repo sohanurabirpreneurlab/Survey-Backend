@@ -11,7 +11,7 @@ import {
   sendSurveyInvitationEmailValidators,
   resolveExternalSurveyInvitationValidators
 } from "./external-survey.validators";
-import { authenticateIntegration } from "./integration-auth.middleware";
+import { authenticateIntegrationByHeader } from "./integration-header.middleware";
 
 const externalSurveyRouter = Router();
 
@@ -22,7 +22,7 @@ externalSurveyRouter.post(
     maxRequests: env.integrationResolveRateLimitMaxRequests,
     windowMs: env.integrationResolveRateLimitWindowMs
   }),
-  authenticateIntegration,
+  authenticateIntegrationByHeader,
   sendSurveyInvitationEmailValidators,
   validateRequest,
   asyncHandler(sendSurveyInvitationEmail)
@@ -35,7 +35,7 @@ externalSurveyRouter.post(
     maxRequests: env.integrationResolveRateLimitMaxRequests,
     windowMs: env.integrationResolveRateLimitWindowMs
   }),
-  authenticateIntegration,
+  authenticateIntegrationByHeader,
   getSurveyCompletionStatusValidators,
   validateRequest,
   asyncHandler(getSurveyCompletionStatus)
@@ -48,7 +48,7 @@ externalSurveyRouter.post(
     maxRequests: env.integrationResolveRateLimitMaxRequests,
     windowMs: env.integrationResolveRateLimitWindowMs
   }),
-  authenticateIntegration,
+  authenticateIntegrationByHeader,
   resolveExternalSurveyInvitationValidators,
   validateRequest,
   asyncHandler(resolveSurveyInvitation)
@@ -61,7 +61,7 @@ externalSurveyRouter.post(
     maxRequests: env.integrationResolveRateLimitMaxRequests,
     windowMs: env.integrationResolveRateLimitWindowMs
   }),
-  authenticateIntegration,
+  authenticateIntegrationByHeader,
   getExternalSurveyInfoValidators,
   validateRequest,
   asyncHandler(getSurveyInfo)
