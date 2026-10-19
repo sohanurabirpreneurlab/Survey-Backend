@@ -42,6 +42,7 @@ import type {
   UpdateSurveyMetadataInput
 } from "./survey.types";
 import type { OrganizationMembershipSummary } from "../organizations/organization.types";
+import { TrashService } from "../trash/trash.service";
 
 type EditableDraftContext = {
   draftVersion: SurveyVersion;
@@ -63,7 +64,8 @@ export class SurveyService {
     private readonly organizationService = new OrganizationService(),
     private readonly organizationRepository = new OrganizationRepository(),
     private readonly authRepository = new AuthRepository(),
-    private readonly calculatedScoreConfigurationService = new CalculatedScoreConfigurationService()
+    private readonly calculatedScoreConfigurationService = new CalculatedScoreConfigurationService(),
+    private readonly trashService = new TrashService()
   ) {}
 
   public async createSurvey(input: CreateSurveyInput) {
@@ -133,7 +135,7 @@ export class SurveyService {
     const survey = await this.requireSurvey(surveyId);
     const actorContext = await this.getActorContext(userId);
     this.assertSurveyDeleteAccess(survey, actorContext);
-    return this.surveyRepository.softDeleteSurvey(survey.id);
+    return this.surveyRepository.softDeleteSurvey(survey.id, userId);
   }
 
   public async restoreSurvey(surveyId: string, userId: string): Promise<Survey> {
@@ -153,7 +155,7 @@ export class SurveyService {
     }
     const actorContext = await this.getActorContext(userId);
     this.assertSurveyDeleteAccess(survey, actorContext);
-    await this.surveyRepository.permanentlyDeleteSurvey(survey.id);
+    await this.trashService.permanentlyDelete("survey", survey.id, userId);
   }
 
   public async getSurvey(surveyId: string, userId: string): Promise<SurveyWithAccess> {

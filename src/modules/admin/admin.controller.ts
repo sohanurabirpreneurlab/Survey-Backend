@@ -78,7 +78,7 @@ export const deleteUser = async (request: Request, response: Response): Promise<
     actorUserId: request.admin!.userId,
     userId: String(request.params.userId)
   });
-  sendSuccess(response, "User permanently deleted successfully.", null);
+  sendSuccess(response, "User moved to Trash successfully.", null);
 };
 
 export const reactivateUser = async (request: Request, response: Response): Promise<void> => {
@@ -153,7 +153,7 @@ export const deleteOrganization = async (request: Request, response: Response): 
     actorUserId: request.admin!.userId,
     organizationId: String(request.params.organizationId)
   });
-  sendSuccess(response, "Organization deleted successfully.", null);
+  sendSuccess(response, "Organization moved to Trash successfully.", null);
 };
 
 export const getOrganizationDetail = async (request: Request, response: Response): Promise<void> => {

@@ -7,6 +7,8 @@ import type {
 } from "./survey-tracking.types";
 
 export interface ISurveyTrackingRepository {
+  deleteSurveyResponse(surveyId: string, responseId: string, deletedBy: string): Promise<boolean>;
+  restoreSurveyResponse(surveyId: string, responseId: string): Promise<boolean>;
   getResponsePreview(
     surveyId: string,
     responseId: string

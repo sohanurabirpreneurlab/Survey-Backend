@@ -187,6 +187,15 @@ export class SurveyTrackingService {
     };
   }
 
+  public async deleteResponse(surveyId: string, responseId: string, userId: string): Promise<void> {
+    await this.assertCanManageResponses(surveyId, userId);
+    const deleted = await this.trackingRepository.deleteSurveyResponse(surveyId, responseId, userId);
+
+    if (!deleted) {
+      throw new AppError(ERROR_CODES.responseNotFound, "Response was not found.", 404);
+    }
+  }
+
   private async getDefinition(surveyVersionId: string): Promise<SurveyVersionDefinition> {
     const definition = await this.surveyRepository.getVersionDefinition(surveyVersionId);
 
@@ -212,6 +221,30 @@ export class SurveyTrackingService {
 
     const membership = await this.organizationService.requireOrganizationMembership(survey.organizationId, userId);
     this.organizationService.requireSurveyReadPermission(membership);
+  }
+
+  private async assertCanManageResponses(surveyId: string, userId: string): Promise<void> {
+    const survey = await this.surveyRepository.findSurveyById(surveyId);
+
+    if (!survey) {
+      throw new AppError(ERROR_CODES.surveyNotFound, "Survey was not found.", 404);
+    }
+
+    const account = await this.authRepository.findUserByUserId(userId);
+
+    if (!account) {
+      throw new AppError(ERROR_CODES.userProfileNotFound, "Account profile is missing.", 403);
+    }
+
+    if (account.profile.role === "admin") {
+      return;
+    }
+
+    const membership = await this.organizationService.requireOrganizationMembership(
+      survey.organizationId,
+      userId
+    );
+    this.organizationService.requireSurveyEditPermission(membership);
   }
 
   private async resolveOrganizationScope(userId: string): Promise<{ isAdmin: boolean; organizationIds?: string[] }> {

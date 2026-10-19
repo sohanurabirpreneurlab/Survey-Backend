@@ -59,7 +59,7 @@ export class AdminService {
 
   public async deleteUser(input: { actorUserId: string; userId: string }) {
     if (input.actorUserId === input.userId) {
-      throw new AppError(ERROR_CODES.forbidden, "You cannot permanently delete your own admin account.", 403);
+      throw new AppError(ERROR_CODES.forbidden, "You cannot move your own admin account to Trash.", 403);
     }
 
     return this.adminRepository.deleteUser(input);

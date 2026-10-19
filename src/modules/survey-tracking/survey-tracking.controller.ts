@@ -58,3 +58,12 @@ export const getTrackingResponsePreview = async (request: Request, response: Res
   );
   sendSuccess(response, "Survey response preview retrieved successfully.", data);
 };
+
+export const deleteTrackingResponse = async (request: Request, response: Response): Promise<void> => {
+  await surveyTrackingService.deleteResponse(
+    getParam(request.params.surveyId),
+    getParam(request.params.responseId),
+    request.admin!.userId
+  );
+  sendSuccess(response, "Survey response deleted successfully.", null);
+};

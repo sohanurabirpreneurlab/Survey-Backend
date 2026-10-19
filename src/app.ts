@@ -17,6 +17,7 @@ import { publicAccessRouter } from "./modules/respondents/public-access.routes";
 import { responseRouter } from "./modules/responses/response.routes";
 import { surveyTrackingRouter } from "./modules/survey-tracking/survey-tracking.routes";
 import { surveyRouter } from "./modules/surveys/survey.routes";
+import { trashRouter } from "./modules/trash/trash.routes";
 import { env } from "./config/env";
 
 export const createApp = (): express.Express => {
@@ -75,6 +76,7 @@ export const createApp = (): express.Express => {
   app.use("/api/v1/integrations", externalSurveyRouter);
   app.use(publicAccessRouter);
   app.use("/api/v1/admin", adminRouter);
+  app.use("/api/v1/admin/trash", trashRouter);
   app.use("/api/v1/auth", authRouter);
   app.use("/api/v1/organizations", organizationRouter);
   app.use("/api/v1/respondent", respondentRouter);

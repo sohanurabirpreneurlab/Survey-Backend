@@ -795,17 +795,22 @@ export class SurveyRepository implements ISurveyRepository {
     return mapSurvey(result.rows[0] as Record<string, unknown>);
   }
 
-  public async softDeleteSurvey(surveyId: string): Promise<Survey> {
+  public async softDeleteSurvey(surveyId: string, deletedBy: string): Promise<Survey> {
     const result = await databasePool.query(
-      "update surveys set deleted_at = now(), updated_at = now() where id = $1 and deleted_at is null returning *",
-      [surveyId]
+      `update surveys
+       set deleted_at = now(),
+           deletion_metadata = jsonb_build_object('deletedAt', now(), 'deletedBy', $2::text),
+           updated_at = now()
+       where id = $1 and deleted_at is null
+       returning *`,
+      [surveyId, deletedBy]
     );
     return mapSurvey(result.rows[0] as Record<string, unknown>);
   }
 
   public async restoreSurvey(surveyId: string): Promise<Survey> {
     const result = await databasePool.query(
-      "update surveys set deleted_at = null, updated_at = now() where id = $1 and deleted_at is not null returning *",
+      "update surveys set deleted_at = null, deletion_metadata = '{}'::jsonb, updated_at = now() where id = $1 and deleted_at is not null returning *",
       [surveyId]
     );
     return mapSurvey(result.rows[0] as Record<string, unknown>);

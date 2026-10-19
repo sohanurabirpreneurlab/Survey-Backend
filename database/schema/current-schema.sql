@@ -20,6 +20,7 @@ create table public.organizations (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   deleted_at timestamptz null,
+  deletion_metadata jsonb not null default '{}'::jsonb,
   constraint organizations_slug_unique unique (slug)
 );
 
@@ -62,6 +63,8 @@ create table public.user_profiles (
   approved_at timestamptz null,
   rejected_at timestamptz null,
   suspended_at timestamptz null,
+  deleted_at timestamptz null,
+  deletion_metadata jsonb not null default '{}'::jsonb,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   constraint user_profiles_role_check
@@ -102,6 +105,7 @@ create table public.surveys (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   deleted_at timestamptz null,
+  deletion_metadata jsonb not null default '{}'::jsonb,
   constraint surveys_active_slug_unique unique (organization_id, slug),
   constraint surveys_dates_check check (
     opens_at is null

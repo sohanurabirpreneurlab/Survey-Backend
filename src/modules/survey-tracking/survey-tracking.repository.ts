@@ -72,6 +72,50 @@ const mapAnswer = (row: Record<string, unknown>): SurveyTrackingResponseAnswer &
 });
 
 export class SurveyTrackingRepository implements ISurveyTrackingRepository {
+  public async deleteSurveyResponse(surveyId: string, responseId: string, deletedBy: string): Promise<boolean> {
+    const result = await databasePool.query(
+      `
+        update survey_responses
+        set status = 'deleted',
+            previous_status = status,
+            deleted_at = now(),
+            deletion_metadata = jsonb_build_object(
+              'deletedAt', now(),
+              'deletedBy', $3::text
+            ),
+            updated_at = now()
+        where survey_id = $1
+          and id = $2
+          and status <> 'deleted'
+        returning id
+      `,
+      [surveyId, responseId, deletedBy]
+    );
+
+    return Boolean(result.rowCount);
+  }
+
+  public async restoreSurveyResponse(surveyId: string, responseId: string): Promise<boolean> {
+    const result = await databasePool.query(
+      `
+        update survey_responses
+        set status = coalesce(previous_status, 'invalidated'),
+            previous_status = null,
+            deleted_at = null,
+            deletion_metadata = '{}'::jsonb,
+            updated_at = now()
+        where survey_id = $1
+          and id = $2
+          and status = 'deleted'
+          and deleted_at is not null
+        returning id
+      `,
+      [surveyId, responseId]
+    );
+
+    return Boolean(result.rowCount);
+  }
+
   public async listTrackedSurveys(input: {
     limit: number;
     organizationIds?: string[];
@@ -178,6 +222,8 @@ export class SurveyTrackingRepository implements ISurveyTrackingRepository {
         inner join respondent_sessions rs on rs.id = sr.respondent_session_id
         left join survey_invitations si on si.id = sr.invitation_id
         where sr.survey_id = $1
+          and sr.status <> 'deleted'
+          and sr.deleted_at is null
         order by coalesce(sr.submitted_at, sr.last_saved_at, sr.created_at) desc
       `,
       [surveyId]
@@ -204,6 +250,8 @@ export class SurveyTrackingRepository implements ISurveyTrackingRepository {
         inner join survey_responses sr on sr.id = a.response_id
         left join answer_choices ac on ac.answer_id = a.id
         where sr.survey_id = $1
+          and sr.status <> 'deleted'
+          and sr.deleted_at is null
         group by a.id
         order by a.created_at asc
       `,
@@ -241,6 +289,8 @@ export class SurveyTrackingRepository implements ISurveyTrackingRepository {
         left join survey_versions pv on pv.id = s.published_version_id
         where sr.survey_id = $1
           and sr.id = $2
+          and sr.status <> 'deleted'
+          and sr.deleted_at is null
         limit 1
       `,
       [surveyId, responseId]

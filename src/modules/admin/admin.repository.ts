@@ -149,6 +149,7 @@ export class AdminRepository {
               count(*) filter (where account_status = 'approved')::int as approved_users,
               count(*) filter (where account_status = 'suspended')::int as suspended_users
             from user_profiles
+            where deleted_at is null
           `
         ),
         databasePool.query(`select count(*)::int as organizations from organizations where deleted_at is null`),
@@ -173,7 +174,7 @@ export class AdminRepository {
             left join organization_members om on om.user_id = up.user_id
             left join organizations o on o.id = om.organization_id and o.deleted_at is null
             ${fragments.profileOrganizationJoin}
-            where up.account_status = 'pending'
+            where up.account_status = 'pending' and up.deleted_at is null
             order by up.created_at desc
             limit 5
           `
@@ -196,7 +197,7 @@ export class AdminRepository {
             left join organization_members om on om.user_id = up.user_id
             left join organizations o on o.id = om.organization_id and o.deleted_at is null
             ${fragments.profileOrganizationJoin}
-            where up.account_status = 'approved'
+            where up.account_status = 'approved' and up.deleted_at is null
             order by up.approved_at desc nulls last
             limit 5
           `
@@ -240,7 +241,7 @@ export class AdminRepository {
   }): Promise<AdminUsersListResult> {
     const fragments = await buildAdminUserQueryFragments();
     const offset = (input.page - 1) * input.limit;
-    const filters: string[] = [];
+    const filters: string[] = ["up.deleted_at is null"];
     const params: unknown[] = [];
 
     if (input.status) {
@@ -328,7 +329,7 @@ export class AdminRepository {
           left join organization_members om on om.user_id = up.user_id
           left join organizations o on o.id = om.organization_id and o.deleted_at is null
           ${fragments.profileOrganizationJoin}
-          where up.user_id = $1
+          where up.user_id = $1 and up.deleted_at is null
           limit 1
         `,
         [userId]
@@ -768,18 +769,35 @@ export class AdminRepository {
   public async deleteUser(input: { actorUserId: string; userId: string }): Promise<void> {
     await withTransaction(async (client) => {
       const result = await client.query(
-        "delete from app_users where id = $1 returning id",
-        [input.userId]
+        `
+          update user_profiles
+          set deleted_at = now(),
+              deletion_metadata = jsonb_build_object(
+                'deletedAt', now(),
+                'deletedBy', $2::text,
+                'previousStatus', account_status
+              ),
+              account_status = 'suspended',
+              suspended_at = coalesce(suspended_at, now()),
+              updated_at = now()
+          where user_id = $1
+            and deleted_at is null
+          returning user_id
+        `,
+        [input.userId, input.actorUserId]
       );
 
       if (!result.rowCount) {
         throw new AppError(ERROR_CODES.userProfileNotFound, "User was not found.", 404);
       }
 
-      await client.query("delete from organization_members where user_id = $1", [input.userId]);
+      await client.query(
+        "update auth_sessions set revoked_at = coalesce(revoked_at, now()) where user_id = $1",
+        [input.userId]
+      );
 
       await this.insertAuditLog(client, {
-        action: "USER_PERMANENTLY_DELETED",
+        action: "USER_DELETED",
         actorUserId: input.actorUserId,
         metadata: {},
         result: "success",
@@ -1212,10 +1230,14 @@ export class AdminRepository {
         `
           update organizations
           set deleted_at = now(),
+              deletion_metadata = jsonb_build_object(
+                'deletedAt', now(),
+                'deletedBy', $2::text
+              ),
               updated_at = now()
           where id = $1
         `,
-        [input.organizationId]
+        [input.organizationId, input.actorUserId]
       );
 
       const organization = organizationLookup.rows[0] as Record<string, unknown>;

@@ -53,7 +53,7 @@ export interface ISurveyRepository {
   updateDraftVersion(input: UpdateDraftVersionInput): Promise<SurveyVersion>;
   closeSurvey(input: UpdateSurveyLifecycleInput): Promise<Survey>;
   reopenSurvey(input: UpdateSurveyLifecycleInput): Promise<Survey>;
-  softDeleteSurvey(surveyId: string): Promise<Survey>;
+  softDeleteSurvey(surveyId: string, deletedBy: string): Promise<Survey>;
   restoreSurvey(surveyId: string): Promise<Survey>;
   permanentlyDeleteSurvey(surveyId: string): Promise<void>;
   createSection(input: CreateSectionInput): Promise<SurveySection>;

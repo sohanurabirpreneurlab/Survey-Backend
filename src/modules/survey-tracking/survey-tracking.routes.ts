@@ -6,6 +6,7 @@ import { authenticateUser } from "../../common/middleware/authenticate-user";
 import { requireApprovedAccount } from "../../common/middleware/require-approved-account";
 import { validateRequest } from "../../common/middleware/validate-request";
 import {
+  deleteTrackingResponse,
   getTrackingResponsePreview,
   listTrackedSurveys,
   listTrackingRecipients,
@@ -46,6 +47,12 @@ surveyTrackingRouter.get(
   responseIdValidator,
   validateRequest,
   asyncHandler(getTrackingResponsePreview)
+);
+surveyTrackingRouter.delete(
+  "/surveys/:surveyId/responses/:responseId",
+  responseIdValidator,
+  validateRequest,
+  asyncHandler(deleteTrackingResponse)
 );
 
 export { surveyTrackingRouter };
